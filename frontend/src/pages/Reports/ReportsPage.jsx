@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppLayout from "../../components/layout/AppLayout";
 import GlassCard from "../../components/cards/GlassCard";
 import Button from "../../components/common/Button";
+import { DEFAULT_PCB_TYPE_ID, fetchPcbTypes } from "../../config/pcbTypes";
 import { useReports } from "../../hooks/useReports";
 import { useNotifications } from "../../context/NotificationContext";
 import { reportsApi } from "../../services/api/reportsApi";
@@ -23,14 +24,37 @@ const triggerDownload = (url, filename) => {
 };
 
 export default function ReportsPage() {
-  const [exportType, setExportType] = useState("SUMMARY"); // "SUMMARY" | "FULL" | "X-MCCV"
-  const [modelTarget, setModelTarget] = useState("ALL");
+  const [pcbTypes, setPcbTypes] = useState([]);
+  const [form, setForm] = useState({
+    reportScope: "SUMMARY", // "SUMMARY" | "FULL" | "X-MCCV"
+    pcbTypeId: DEFAULT_PCB_TYPE_ID,
+    startDate: "2026-07-01",
+    endDate: "2026-07-24",
+    embedGradCam: true,
+    includeOpenCvCoordinates: true,
+  });
   const { reports, loading, error, refresh } = useReports();
   const { notify } = useNotifications();
 
+  useEffect(() => {
+    let isActive = true;
+    fetchPcbTypes().then((types) => {
+      if (isActive) setPcbTypes(types);
+    });
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const updateForm = (field) => (event) => {
+    const value =
+      event.target.type === "checkbox" ? event.target.checked : event.target.value;
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
   const handleCreateReport = async () => {
     try {
-      const report = await reportsApi.createReport({ type: exportType, model: modelTarget });
+      const report = await reportsApi.createReport({ ...form });
       if (report?.downloadUrl) {
         triggerDownload(report.downloadUrl, report.filename || `${report.reportId || "report"}.pdf`);
       }
@@ -112,9 +136,9 @@ export default function ReportsPage() {
                       ].map((type) => (
                         <button
                           key={type.id}
-                          onClick={() => setExportType(type.id)}
+                          onClick={() => setForm((prev) => ({ ...prev, reportScope: type.id }))}
                           className={`py-2 text-[9px] font-display uppercase tracking-widest font-extrabold rounded-lg border transition-all cursor-pointer whitespace-nowrap ${
-                            exportType === type.id
+                            form.reportScope === type.id
                               ? "bg-accent/10 border-accent text-accent shadow-[0_0_10px_rgba(0,229,255,0.15)]"
                               : "bg-secondary-bg border-accent/10 text-slate-400 hover:border-accent/30"
                           }`}
@@ -125,20 +149,21 @@ export default function ReportsPage() {
                     </div>
                   </div>
 
-                  {/* Model Target Selection */}
+                  {/* PCB Type Selection */}
                   <div className="space-y-2.5">
                     <label className="font-mono text-[9px] text-slate-400 uppercase tracking-wider block font-bold">
-                      Select Target Model
+                      Select PCB Type
                     </label>
                     <select
-                      value={modelTarget}
-                      onChange={(e) => setModelTarget(e.target.value)}
+                      value={form.pcbTypeId}
+                      onChange={updateForm("pcbTypeId")}
                       className="w-full bg-[#050816]/60 border border-accent/15 rounded-lg px-3 py-2 font-sans text-xs text-white placeholder-slate-500 focus:outline-none focus:border-accent transition-all cursor-pointer"
                     >
-                      <option value="ALL" className="bg-[#111827]">All Models Combined</option>
-                      <option value="RPI4" className="bg-[#111827]">Raspberry Pi 4 Model B</option>
-                      <option value="STM32" className="bg-[#111827]">STM32 MCU Controller</option>
-                      <option value="ESP32" className="bg-[#111827]">ESP32-WROOM IoT Gateway</option>
+                      {pcbTypes.map((pcbType) => (
+                        <option key={pcbType.id} value={pcbType.id} className="bg-[#111827]">
+                          {pcbType.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -150,12 +175,14 @@ export default function ReportsPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <input
                         type="date"
-                        defaultValue="2026-07-01"
+                        value={form.startDate}
+                        onChange={updateForm("startDate")}
                         className="w-full min-w-0 bg-[#050816]/60 border border-accent/15 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono focus:outline-none focus:border-accent"
                       />
                       <input
                         type="date"
-                        defaultValue="2026-07-24"
+                        value={form.endDate}
+                        onChange={updateForm("endDate")}
                         className="w-full min-w-0 bg-[#050816]/60 border border-accent/15 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono focus:outline-none focus:border-accent"
                       />
                     </div>
@@ -165,11 +192,21 @@ export default function ReportsPage() {
                   <div className="p-3 bg-[#050816]/60 border border-accent/5 rounded-lg">
                     <div className="flex items-center justify-between gap-3 py-1 font-mono text-[9px] text-slate-400">
                       <span className="leading-none">Embed Grad-CAM heatmaps:</span>
-                      <input type="checkbox" defaultChecked className="accent-accent w-3.5 h-3.5 shrink-0 cursor-pointer" />
+                      <input
+                        type="checkbox"
+                        checked={form.embedGradCam}
+                        onChange={updateForm("embedGradCam")}
+                        className="accent-accent w-3.5 h-3.5 shrink-0 cursor-pointer"
+                      />
                     </div>
                     <div className="flex items-center justify-between gap-3 py-1 font-mono text-[9px] text-slate-400">
                       <span className="leading-none">Include raw OpenCV coordinates:</span>
-                      <input type="checkbox" defaultChecked className="accent-accent w-3.5 h-3.5 shrink-0 cursor-pointer" />
+                      <input
+                        type="checkbox"
+                        checked={form.includeOpenCvCoordinates}
+                        onChange={updateForm("includeOpenCvCoordinates")}
+                        className="accent-accent w-3.5 h-3.5 shrink-0 cursor-pointer"
+                      />
                     </div>
                   </div>
                 </div>
