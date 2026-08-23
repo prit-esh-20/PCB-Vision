@@ -1,3 +1,5 @@
+from database import get_db
+from models import Inspection, Detection, Report
 from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
