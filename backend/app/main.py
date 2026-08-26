@@ -1,3 +1,4 @@
+from fastapi import UploadFile, File
 from database import get_db
 from models import Inspection, Detection, Report
 from fastapi import Depends
@@ -45,3 +46,14 @@ def database_health(db: Session = Depends(get_db)):
             "database": "not connected",
             "detail": str(e)
         }
+
+@app.post("/api/inspection/upload")
+async def upload_pcb(file: UploadFile = File(...)):
+    image_data = await file.read()
+
+    return {
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "file_size": len(image_data),
+        "message": "PCB image received successfully"
+    }
