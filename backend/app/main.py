@@ -1,4 +1,5 @@
-from fastapi import UploadFile, File
+from sqlalchemy.orm import Session
+from fastapi import UploadFile, File, Depends
 from database import get_db
 from models import Inspection, Detection, Report
 from fastapi import Depends
@@ -48,12 +49,31 @@ def database_health(db: Session = Depends(get_db)):
         }
 
 @app.post("/api/inspection/upload")
-async def upload_pcb(file: UploadFile = File(...)):
+async def upload_pcb(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
     image_data = await file.read()
 
+    inspection = Inspection(
+        board_id="PCB-TEST-001",
+        image_name=file.filename,
+        model_name="Pending",
+        status="uploaded",
+        confidence=None,
+        defect_class=None,
+        inspection_time=None,
+        xai_explanation="ML inspection pending."
+)
+
+    db.add(inspection)
+    db.commit()
+    db.refresh(inspection)
+
     return {
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "file_size": len(image_data),
-        "message": "PCB image received successfully"
-    }
+        "id": inspection.id,
+        "board_id": inspection.board_id,
+        "filename": inspection.image_name,
+        "status": inspection.status,
+        "message": "PCB image uploaded and inspection record created"
+}
