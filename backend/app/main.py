@@ -1,3 +1,5 @@
+from pathlib import Path
+import uuid
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, File, Depends
 from database import get_db
@@ -8,6 +10,9 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from fastapi import FastAPI
+
+UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="PCBVision API",
@@ -53,10 +58,47 @@ async def upload_pcb(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
+
     image_data = await file.read()
+    file_path = UPLOAD_DIR / f"{uuid.uuid4().hex[:8].upper()}_{file.filename}"
+    file_path.write_bytes(image_data)
 
     inspection = Inspection(
-        board_id="PCB-TEST-001",
+        board_id=f"PCB-{uuid.uuid4().hex[:8].upper()}",
+        image_name=file.filename,
+        model_name="Pending",
+        status="uploaded",
+        confidence=None,
+        defect_class=None,
+        inspection_time=None,
+        xai_explanation="ML inspection pending."
+    )
+
+    db.add(inspection)
+    db.commit()
+    db.refresh(inspection)
+
+    return {
+        "id": inspection.id,
+        "board_id": inspection.board_id,
+        "filename": inspection.image_name,
+        "status": inspection.status,
+        "message": "PCB image uploaded and inspection record created"
+    }
+
+
+@app.get("/api/inspections")
+def get_inspections(db: Session = Depends(get_db)):
+    inspections = (
+        db.query(Inspection)
+        .order_by(Inspection.created_at.desc())
+        .all()
+    )
+
+    return inspections
+
+    inspection = Inspection(
+        board_id=f"PCB-{uuid.uuid4().hex[:8].upper()}",
         image_name=file.filename,
         model_name="Pending",
         status="uploaded",
