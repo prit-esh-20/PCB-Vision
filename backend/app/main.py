@@ -1,3 +1,4 @@
+from fastapi.responses import FileResponse
 from pathlib import Path
 import uuid
 from sqlalchemy.orm import Session
@@ -96,27 +97,32 @@ def get_inspections(db: Session = Depends(get_db)):
         .all()
     )
 
+@app.get("/api/inspection/{inspection_id}/image")
+def get_inspection_image(
+    inspection_id: int,
+    db: Session = Depends(get_db)
+):
+    inspection = (
+        db.query(Inspection)
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+
+    if not inspection:
+        return {"error": "Inspection not found"}
+
+    if not inspection.image_path:
+        return {"error": "Image path not available"}
+
+    image_path = Path(inspection.image_path)
+
+    if not image_path.exists():
+        return {"error": "Image file not found"}
+
+    return FileResponse(
+        path=image_path,
+        filename=inspection.image_name
+    )
+
     return inspections
 
-    inspection = Inspection(
-        board_id=f"PCB-{uuid.uuid4().hex[:8].upper()}",
-        image_name=file.filename,
-        model_name="Pending",
-        status="uploaded",
-        confidence=None,
-        defect_class=None,
-        inspection_time=None,
-        xai_explanation="ML inspection pending."
-)
-
-    db.add(inspection)
-    db.commit()
-    db.refresh(inspection)
-
-    return {
-        "id": inspection.id,
-        "board_id": inspection.board_id,
-        "filename": inspection.image_name,
-        "status": inspection.status,
-        "message": "PCB image uploaded and inspection record created"
-}
