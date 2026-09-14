@@ -116,6 +116,83 @@ def get_inspections(db: Session = Depends(get_db)):
 
     return inspections
 
+@app.get("/api/inspection/latest")
+def get_latest_inspection(
+    db: Session = Depends(get_db)
+):
+    inspection = (
+        db.query(Inspection)
+        .order_by(Inspection.created_at.desc())
+        .first()
+    )
+
+    if not inspection:
+        return {"status": "ERROR", "message": "No inspection found"}
+
+    return inspection
+
+@app.get("/api/dashboard/stats")
+def get_dashboard_stats(
+    db: Session = Depends(get_db)
+):
+    inspections = db.query(Inspection).all()
+
+    inspected = len(inspections)
+    passed = sum(
+    1 for inspection in inspections
+    if str(inspection.status).upper() == "PASS"
+    )
+
+    failed = sum(
+        1 for inspection in inspections
+        if str(inspection.status).upper() == "FAIL"
+    )
+
+    inspected = passed + failed
+
+    pass_rate = round((passed / inspected) * 100, 1) if inspected else 0
+
+    completed_times = [
+        inspection.inspection_time
+        for inspection in inspections
+        if inspection.inspection_time is not None
+    ]
+
+    avg_cycle_time = (
+        round(sum(completed_times) / len(completed_times), 2)
+        if completed_times
+        else 0
+    )
+
+    return {
+        "today": {
+            "inspected": inspected,
+            "pass": passed,
+            "fail": failed,
+            "passRate": pass_rate,
+            "avgCycleTime": avg_cycle_time,
+            "systemUptime": "—",
+            "rpiTemp": "—",
+            "cpu": "—",
+            "fps": "—",
+        },
+        "yesterday": {
+            "inspected": 0,
+            "pass": 0,
+            "fail": 0,
+            "passRate": 0,
+            "avgCycleTime": 0,
+        },
+    }
+
+@app.get("/api/camera/status")
+def get_camera_status():
+    return {
+        "status": "DISCONNECTED",
+        "connected": False,
+        "message": "Camera is not connected."
+    }
+
 @app.post("/api/inspection/run")
 def run_inspection(
     request: InspectionRequest,
@@ -130,7 +207,7 @@ def run_inspection(
     if not inspection:
         return {"status": "ERROR", "message": "Inspection record not found"}
 
-    inspection.status = "completed"
+    inspection.status = "PASS"
     inspection.model_name = "Pending"
     inspection.xai_explanation = "ML inspection pending."
 

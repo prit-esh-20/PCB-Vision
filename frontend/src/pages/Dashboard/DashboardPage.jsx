@@ -330,25 +330,37 @@ export default function DashboardPage() {
   // defect-specific explanations.
   const xai = inspection?.xai ?? {};
   const isPass = inspection?.status === "PASS";
+const isMlPending = inspection?.modelName === "Pending";
 
-  const xaiWhatWrong = isNotPcb
-    ? "The uploaded image could not be identified as a valid PCB."
-    : (xai.defect || xai.explanation || inspection?.xaiExplanation
-      || (isPass
-        ? "No significant visual defect detected."
-        : "The backend flagged this board as defective, but has not provided an explanation yet."));
+const xaiWhatWrong = isNotPcb
+  ? "The uploaded image could not be identified as a valid PCB."
+  : (xai.defect ||
+    xai.explanation ||
+    inspection?.xaiExplanation ||
+    (isPass
+      ? "No significant visual defect detected."
+      : "The backend flagged this board as defective, but has not provided an explanation yet."));
 
-  const xaiWhyPass = isPass
-    ? (xai.explanation || "The inspected component regions and PCB layout appear consistent with the expected visual pattern.")
+const xaiWhyPass = isMlPending
+  ? "The ML inspection model has not been integrated yet. This PASS result is a temporary backend state."
+  : isPass
+    ? (xai.explanation ||
+      "The inspected component regions and PCB layout appear consistent with the expected visual pattern.")
     : "";
 
-  const xaiWhere = xai.location || "The backend has not provided the affected region yet.";
+const xaiWhere = xai.location ||
+  (isMlPending
+    ? "Defect location will be available after ML inspection is integrated."
+    : "The backend has not provided the affected region yet.");
 
-  const xaiFix = xai.recommendation || (isPass
-    ? "No corrective action required. Board can proceed to the next stage."
-    : "Corrective action details are not available from the backend yet. Inspect the highlighted region and rerun the inspection.");
+const xaiFix = isMlPending
+  ? "No corrective action is available yet. ML-based defect detection will provide the actual recommendation."
+  : xai.recommendation ||
+    (isPass
+      ? "No corrective action required. Board can proceed to the next stage."
+      : "Corrective action details are not available from the backend yet. Inspect the highlighted region and rerun the inspection.");
 
-  const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
+const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
 
   const cameraBadge = CAMERA_BADGE[cameraStatus.status] || CAMERA_BADGE.UNKNOWN;
 
@@ -915,7 +927,7 @@ export default function DashboardPage() {
                       <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between gap-2 rounded-lg bg-black/80 border border-accent/15 px-3 py-1.5 font-mono text-[9px] backdrop-blur-sm">
                         <div className="flex items-center gap-3">
                           <span className="text-slate-500">Board:</span>
-                          <span className="font-bold text-white">{inspection?.board_id || "—"}</span>
+                          <span className="font-bold text-white">{inspection?.pcbId || "—"}</span>
                         </div>
                         <div className="flex items-center gap-3">
                           {hudStatus ? (
