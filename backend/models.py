@@ -12,6 +12,7 @@ class Inspection(Base):
     id = Column(BigInteger, primary_key=True, index=True)
     board_id = Column(String(50), unique=True, nullable=False)
     image_name = Column(String(255))
+    image_path = Column(Text)
     model_name = Column(String(100))
     status = Column(String(20))
     confidence = Column(Float)

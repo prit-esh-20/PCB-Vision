@@ -66,6 +66,7 @@ async def upload_pcb(
     inspection = Inspection(
         board_id=f"PCB-{uuid.uuid4().hex[:8].upper()}",
         image_name=file.filename,
+        image_path=str(file_path),
         model_name="Pending",
         status="uploaded",
         confidence=None,
