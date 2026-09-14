@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -135,54 +136,88 @@ def get_latest_inspection(
 def get_dashboard_stats(
     db: Session = Depends(get_db)
 ):
-    inspections = db.query(Inspection).all()
+    now = datetime.now(timezone.utc)
 
-    inspected = len(inspections)
-    passed = sum(
-    1 for inspection in inspections
-    if str(inspection.status).upper() == "PASS"
+    start_of_today = now.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0
     )
 
-    failed = sum(
-        1 for inspection in inspections
-        if str(inspection.status).upper() == "FAIL"
+    start_of_yesterday = start_of_today.replace(
+        day=start_of_today.day - 1
     )
 
-    inspected = passed + failed
-
-    pass_rate = round((passed / inspected) * 100, 1) if inspected else 0
-
-    completed_times = [
-        inspection.inspection_time
-        for inspection in inspections
-        if inspection.inspection_time is not None
-    ]
-
-    avg_cycle_time = (
-        round(sum(completed_times) / len(completed_times), 2)
-        if completed_times
-        else 0
+    today_inspections = (
+        db.query(Inspection)
+        .filter(Inspection.created_at >= start_of_today)
+        .all()
     )
 
-    return {
-        "today": {
+    yesterday_inspections = (
+        db.query(Inspection)
+        .filter(
+            Inspection.created_at >= start_of_yesterday,
+            Inspection.created_at < start_of_today
+        )
+        .all()
+    )
+
+    def calculate_stats(inspections):
+        passed = sum(
+            1 for inspection in inspections
+            if str(inspection.status).upper() == "PASS"
+        )
+
+        failed = sum(
+            1 for inspection in inspections
+            if str(inspection.status).upper() == "FAIL"
+        )
+
+        inspected = passed + failed
+
+        pass_rate = (
+            round((passed / inspected) * 100, 1)
+            if inspected
+            else 0
+        )
+
+        completed_times = [
+            inspection.inspection_time
+            for inspection in inspections
+            if inspection.inspection_time is not None
+        ]
+
+        avg_cycle_time = (
+            round(
+                sum(completed_times) / len(completed_times),
+                2
+            )
+            if completed_times
+            else 0
+        )
+
+        return {
             "inspected": inspected,
             "pass": passed,
             "fail": failed,
             "passRate": pass_rate,
             "avgCycleTime": avg_cycle_time,
+        }
+
+    today_stats = calculate_stats(today_inspections)
+    yesterday_stats = calculate_stats(yesterday_inspections)
+
+    return {
+        "today": {
+            **today_stats,
             "systemUptime": "—",
             "rpiTemp": "—",
             "cpu": "—",
             "fps": "—",
         },
-        "yesterday": {
-            "inspected": 0,
-            "pass": 0,
-            "fail": 0,
-            "passRate": 0,
-            "avgCycleTime": 0,
-        },
+        "yesterday": yesterday_stats,
     }
 
 @app.get("/api/camera/status")
