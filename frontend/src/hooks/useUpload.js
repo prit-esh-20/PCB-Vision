@@ -14,7 +14,7 @@ export const isValidImageFile = (file) => {
 
 // Upload state for the PCB image picker. The file itself is validated on the
 // client; the actual upload goes through uploadApi. The preview always shows
-// the real selected file — never a placeholder.
+// the real selecteda file — never a placeholder.
 export function useUpload() {
   const [uploadedImage, setUploadedImage] = useState(null);
   const [uploading, setUploading] = useState(false);

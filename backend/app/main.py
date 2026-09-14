@@ -1,4 +1,6 @@
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from pathlib import Path
 import uuid
 from sqlalchemy.orm import Session
@@ -19,6 +21,17 @@ app = FastAPI(
     title="PCBVision API",
     description="Backend API for PCBVision Intelligent PCB Inspection",
     version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -53,6 +66,9 @@ def database_health(db: Session = Depends(get_db)):
             "database": "not connected",
             "detail": str(e)
         }
+
+class InspectionRequest(BaseModel):
+    uploadId: int
 
 @app.post("/api/inspection/upload")
 async def upload_pcb(
@@ -91,11 +107,37 @@ async def upload_pcb(
 
 @app.get("/api/inspections")
 def get_inspections(db: Session = Depends(get_db)):
+
     inspections = (
         db.query(Inspection)
         .order_by(Inspection.created_at.desc())
         .all()
     )
+
+    return inspections
+
+@app.post("/api/inspection/run")
+def run_inspection(
+    request: InspectionRequest,
+    db: Session = Depends(get_db)
+):
+    inspection = (
+        db.query(Inspection)
+        .filter(Inspection.id == request.uploadId)
+        .first()
+    )
+
+    if not inspection:
+        return {"status": "ERROR", "message": "Inspection record not found"}
+
+    inspection.status = "completed"
+    inspection.model_name = "Pending"
+    inspection.xai_explanation = "ML inspection pending."
+
+    db.commit()
+    db.refresh(inspection)
+
+    return inspection
 
 @app.get("/api/inspection/{inspection_id}/image")
 def get_inspection_image(
@@ -124,5 +166,4 @@ def get_inspection_image(
         filename=inspection.image_name
     )
 
-    return inspections
 

@@ -915,7 +915,7 @@ export default function DashboardPage() {
                       <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between gap-2 rounded-lg bg-black/80 border border-accent/15 px-3 py-1.5 font-mono text-[9px] backdrop-blur-sm">
                         <div className="flex items-center gap-3">
                           <span className="text-slate-500">Board:</span>
-                          <span className="font-bold text-white">{inspection?.pcbId || "—"}</span>
+                          <span className="font-bold text-white">{inspection?.board_id || "—"}</span>
                         </div>
                         <div className="flex items-center gap-3">
                           {hudStatus ? (
