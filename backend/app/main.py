@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from pathlib import Path
 import uuid
 from sqlalchemy.orm import Session
-from fastapi import UploadFile, File, Depends
+from fastapi import UploadFile, File, Depends, FastAPI, Query
 from database import get_db
 from models import Inspection, Detection, Report
 from fastapi import Depends
@@ -116,6 +116,88 @@ def get_inspections(db: Session = Depends(get_db)):
     )
 
     return inspections
+
+@app.get("/api/inspection-history")
+def get_inspection_history(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(10, ge=1, le=100),
+    search: str | None = None,
+    status: str | None = None,
+    defect: str | None = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Inspection)
+
+    # Search by PCB ID or image name
+    if search:
+        search_term = f"%{search}%"
+
+        query = query.filter(
+            (Inspection.board_id.ilike(search_term)) |
+            (Inspection.image_name.ilike(search_term))
+        )
+
+    # Filter by inspection status
+    if status and status.upper() != "ALL":
+        query = query.filter(
+        Inspection.status.ilike(status)
+    )
+
+    if defect and defect.upper() != "ALL":
+        query = query.filter(
+        Inspection.defect_class.ilike(defect)
+    )
+
+    # Newest inspections first
+    query = query.order_by(
+        Inspection.created_at.desc()
+    )
+
+    total_records = query.count()
+
+    offset = (page - 1) * pageSize
+
+    inspections = (
+        query
+        .offset(offset)
+        .limit(pageSize)
+        .all()
+    )
+
+    pages = (
+        (total_records + pageSize - 1) // pageSize
+        if total_records
+        else 1
+    )
+
+    records = []
+
+    for inspection in inspections:
+        records.append({
+            "id": inspection.id,
+            "pcbId": inspection.board_id,
+            "scanDateTime": inspection.created_at,
+            "targetModel": inspection.model_name,
+            "status": inspection.status,
+            "defectClass": inspection.defect_class or "None",
+            "yoloConfidence": inspection.confidence,
+            "cycleTime": inspection.inspection_time,
+
+            # Fields not available in the current DB schema
+            "operator": None,
+            "componentsCount": None,
+            "defectCoordinates": None,
+            "gradCamExplanation": inspection.xai_explanation or "",
+            "verificationDetails": None,
+        })
+
+    return {
+        "records": records,
+        "totalRecords": total_records,
+        "pages": pages,
+        "page": page,
+        "pageSize": pageSize,
+    }
 
 @app.get("/api/inspection/latest")
 def get_latest_inspection(
