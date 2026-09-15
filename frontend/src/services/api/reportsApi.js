@@ -19,14 +19,32 @@ export const reportsApi = {
 
   async getReport(reportId) {
     if (API_CONFIG.useMock) return reportsMock.getReport(reportId);
+
     const { data } = await apiClient.get(`/reports/${reportId}`);
-    return data;
+
+    return {
+      ...data,
+      viewUrl: data.downloadUrl
+        ? `${API_CONFIG.baseUrl.replace(/\/$/, "")}${data.downloadUrl
+            .replace(/^\/api/, "")
+            .replace(/\/download$/, "/view")}`
+        : null,
+      downloadUrl: data.downloadUrl
+        ? `${API_CONFIG.baseUrl.replace(/\/$/, "")}${data.downloadUrl.replace(/^\/api/, "")}`
+        : null,
+    };
   },
 
   async downloadReport(reportId) {
-    if (API_CONFIG.useMock) return reportsMock.downloadReport(reportId);
-    const { data } = await apiClient.get(`/reports/${reportId}/download`, { responseType: "blob" });
-    const filename = `report-${reportId}.pdf`;
-    return { filename, downloadUrl: URL.createObjectURL(data) };
+    if (API_CONFIG.useMock) {
+      return reportsMock.downloadReport(reportId);
+    }
+
+    const downloadUrl = `${API_CONFIG.baseUrl.replace(/\/$/, "")}/reports/${reportId}/download`;
+
+    return {
+      filename: `report-${reportId}.pdf`,
+      downloadUrl,
+    };
   },
 };
