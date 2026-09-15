@@ -310,6 +310,8 @@ def create_report(
     WHITE = colors.white
     PASS_GREEN = colors.HexColor("#168A58")
     FAIL_RED = colors.HexColor("#C93636")
+    HEADER_BG = colors.HexColor("#0B1F18")
+    TEXT_MUTED = colors.HexColor("#8FA3A0")
 
     # ---------------------------------------------------------
     # Styles
@@ -487,25 +489,105 @@ def create_report(
         or "No explanation is currently available."
     )
 
-    report_scope = report_data.get("reportScope", "SUMMARY")
+    report_scope = report_data.get("reportScope", "SUMMARY").upper()
+
     start_date = report_data.get("startDate", "N/A")
     end_date = report_data.get("endDate", "N/A")
+
+    pcb_type_id = report_data.get("pcbTypeId")
+
+    embed_gradcam = bool(
+        report_data.get("embedGradCam", False)
+    )
+
+    include_opencv_coordinates = bool(
+        report_data.get("includeOpenCvCoordinates", False)
+    )
 
     # ---------------------------------------------------------
     # Build document
     # ---------------------------------------------------------
 
     story = []
+    
+    # ---------------------------------------------------------
+    # Report type configuration
+    # ---------------------------------------------------------
+
+    if report_scope == "SUMMARY":
+        report_profile_title = "Executive Inspection Summary"
+        report_profile_description = (
+            "A concise overview of the PCB inspection result, "
+            "inspection status, and key findings."
+        )
+
+    elif report_scope == "FULL":
+        report_profile_title = "Complete Inspection Report"
+        report_profile_description = (
+            "A comprehensive inspection record containing "
+            "inspection details, detection information, XAI findings, "
+            "and audit configuration."
+        )
+
+    elif report_scope == "X-MCCV":
+        report_profile_title = "X-MCCV Explainability Report"
+        report_profile_description = (
+            "An explainability-focused report containing AI findings, "
+            "diagnostic information, and available model interpretation data."
+        )
+
+    else:
+        report_scope = "SUMMARY"
+        report_profile_title = "Executive Inspection Summary"
+        report_profile_description = (
+            "A concise overview of the PCB inspection result, "
+            "inspection status, and key findings."
+        )
+        
+    is_summary = report_scope == "SUMMARY"
+    is_full = report_scope == "FULL"
+    is_xmccv = report_scope == "X-MCCV"
 
     # Title
     story.append(Spacer(1, 5 * mm))
 
+    if is_summary:
+        report_title_text = "PCB Inspection Report — Overview"
+    elif is_full:
+        report_title_text = "PCB Inspection Report — Full Details"
+    else:
+        report_title_text = "PCB Inspection Report — X-MCCV"
+
     story.append(
         Paragraph(
-            "PCB Inspection Report",
+            report_title_text,
             report_title,
         )
     )
+    
+    story.append(
+        Paragraph(
+            report_profile_title,
+            ParagraphStyle(
+                "ProfileTitle",
+                parent=body,
+                fontName="Helvetica-Bold",
+                fontSize=10,
+                leading=13,
+                textColor=PCB_GREEN,
+                spaceAfter=3,
+            ),
+        )
+    )
+
+    story.append(
+        Paragraph(
+            report_profile_description,
+            small,
+        )
+    )
+
+    story.append(Spacer(1, 4 * mm))
 
     story.append(
         Paragraph(
@@ -628,54 +710,56 @@ def create_report(
     # Inspection details
     # ---------------------------------------------------------
 
-    story.append(
-        Paragraph(
-            "Inspection Details",
-            section_title,
+    if is_full:
+
+        story.append(
+            Paragraph(
+                "Inspection Details",
+                section_title,
+            )
         )
-    )
 
-    details_data = [
-        [
-            cell_label("PCB IMAGE"),
-            cell_value(image_name),
-        ],
-        [
-            cell_label("DEFECT CLASS"),
-            cell_value(defect),
-        ],
-        [
-            cell_label("MODEL"),
-            cell_value(model_name),
-        ],
-        [
-            cell_label("INSPECTION TIME"),
-            cell_value(f"{inspection_time:.2f} seconds"),
-        ],
-    ]
-
-    details_table = Table(
-        details_data,
-        colWidths=[48 * mm, 118 * mm],
-    )
-
-    details_table.setStyle(
-        TableStyle(
+        details_data = [
             [
-                ("BACKGROUND", (0, 0), (0, -1), LIGHT_BG),
-                ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
-                ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-            ]
-        )
-    )
+                cell_label("PCB IMAGE"),
+                cell_value(image_name),
+            ],
+            [
+                cell_label("DEFECT CLASS"),
+                cell_value(defect),
+            ],
+            [
+                cell_label("MODEL"),
+                cell_value(model_name),
+            ],
+            [
+                cell_label("INSPECTION TIME"),
+                cell_value(f"{inspection_time:.2f} seconds"),
+            ],
+        ]
 
-    story.append(details_table)
-    story.append(Spacer(1, 7 * mm))
+        details_table = Table(
+            details_data,
+            colWidths=[48 * mm, 118 * mm],
+        )
+
+        details_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (0, -1), LIGHT_BG),
+                    ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            )
+        )
+
+        story.append(details_table)
+        story.append(Spacer(1, 7 * mm))
 
     # ---------------------------------------------------------
     # PCB Image
@@ -684,112 +768,138 @@ def create_report(
     if inspection.image_path:
         pcb_path = Path(inspection.image_path)
 
-    if pcb_path.exists():
-        try:
-            # Convert image to PNG so ReportLab can reliably embed it
-            temp_image_path = reports_dir / f"{report_id}_pcb.png"
+        if pcb_path.exists():
+            try:
+                # Convert image to PNG so ReportLab can reliably embed it
+                temp_image_path = reports_dir / f"{report_id}_pcb.png"
 
-            with PILImage.open(pcb_path) as img:
-                img = img.convert("RGB")
-                img.save(temp_image_path, "PNG")
+                with PILImage.open(pcb_path) as img:
+                    img = img.convert("RGB")
+                    img.save(temp_image_path, "PNG")
 
-                img_width, img_height = img.size
+                    img_width, img_height = img.size
 
-            max_width = 150 * mm
-            max_height = 85 * mm
+                max_width = 150 * mm
+                max_height = 85 * mm
 
-            scale = min(
-                max_width / img_width,
-                max_height / img_height,
-            )
-
-            display_width = img_width * scale
-            display_height = img_height * scale
-
-            story.append(
-                Paragraph(
-                    "Inspected PCB Image",
-                    section_title,
+                scale = min(
+                    max_width / img_width,
+                    max_height / img_height,
                 )
-            )
 
-            pcb_image = RLImage(
-                str(temp_image_path),
-                width=display_width,
-                height=display_height,
-            )
+                display_width = img_width * scale
+                display_height = img_height * scale
 
-            story.append(
-                Table(
-                    [[pcb_image]],
-                    colWidths=[166 * mm],
-                    style=TableStyle(
-                        [
-                            (
-                                "BACKGROUND",
-                                (0, 0),
-                                (-1, -1),
-                                LIGHT_BG,
-                            ),
-                            (
-                                "BOX",
-                                (0, 0),
-                                (-1, -1),
-                                0.7,
-                                BORDER,
-                            ),
-                            (
-                                "ALIGN",
-                                (0, 0),
-                                (-1, -1),
-                                "CENTER",
-                            ),
-                            (
-                                "VALIGN",
-                                (0, 0),
-                                (-1, -1),
-                                "MIDDLE",
-                            ),
-                            (
-                                "LEFTPADDING",
-                                (0, 0),
-                                (-1, -1),
-                                8,
-                            ),
-                            (
-                                "RIGHTPADDING",
-                                (0, 0),
-                                (-1, -1),
-                                8,
-                            ),
-                            (
-                                "TOPPADDING",
-                                (0, 0),
-                                (-1, -1),
-                                8,
-                            ),
-                            (
-                                "BOTTOMPADDING",
-                                (0, 0),
-                                (-1, -1),
-                                8,
-                            ),
-                        ]
-                    ),
+                story.append(
+                    Paragraph(
+                        "Inspected PCB Image",
+                        section_title,
+                    )
                 )
-            )
 
-            story.append(Spacer(1, 7 * mm))
+                pcb_image = RLImage(
+                    str(temp_image_path),
+                    width=display_width,
+                    height=display_height,
+                )
 
-        except Exception:
-            pass
+                story.append(
+                    Table(
+                        [[pcb_image]],
+                        colWidths=[166 * mm],
+                        style=TableStyle(
+                            [
+                                (
+                                    "BACKGROUND",
+                                    (0, 0),
+                                    (-1, -1),
+                                    LIGHT_BG,
+                                ),
+                                (
+                                    "BOX",
+                                    (0, 0),
+                                    (-1, -1),
+                                    0.7,
+                                    BORDER,
+                                ),
+                                (
+                                    "ALIGN",
+                                    (0, 0),
+                                    (-1, -1),
+                                    "CENTER",
+                                ),
+                                (
+                                    "VALIGN",
+                                    (0, 0),
+                                    (-1, -1),
+                                    "MIDDLE",
+                                ),
+                                (
+                                    "LEFTPADDING",
+                                    (0, 0),
+                                    (-1, -1),
+                                    8,
+                                ),
+                                (
+                                    "RIGHTPADDING",
+                                    (0, 0),
+                                    (-1, -1),
+                                    8,
+                                ),
+                                (
+                                    "TOPPADDING",
+                                    (0, 0),
+                                    (-1, -1),
+                                    8,
+                                ),
+                                (
+                                    "BOTTOMPADDING",
+                                    (0, 0),
+                                    (-1, -1),
+                                    8,
+                                ),
+                            ]
+                        ),
+                    )
+                )
+
+                story.append(Spacer(1, 7 * mm))
+
+            except Exception:
+                pass
+    
     # ---------------------------------------------------------
     # XAI explanation
     # ---------------------------------------------------------
 
+    if is_xmccv:
+        xai_title = "X-MCCV Explainability Analysis"
+        xai_content = (
+            f"<b>Primary Finding:</b> {explanation}<br/><br/>"
+            "<b>Explainability Status:</b> X-MCCV explainability analysis "
+            "is configured for this report. Grad-CAM visualization and "
+            "raw OpenCV coordinate extraction will be populated when the "
+            "ML inspection pipeline is integrated."
+        )
+
+    elif is_full:
+        xai_title = "AI Inspection Explanation"
+        xai_content = (
+            f"<b>Inspection Explanation:</b> {explanation}<br/><br/>"
+            "<b>Explainability Status:</b> The explanation shown here is "
+            "based on the inspection data currently available to the "
+            "PCBVision system."
+        )
+
+    else:
+        xai_title = "Inspection Explanation"
+        xai_content = (
+            f"<b>Finding:</b> {explanation}"
+        )
+
     story.append(
         Paragraph(
-            "AI Inspection Explanation",
+            xai_title,
             section_title,
         )
     )
@@ -798,7 +908,7 @@ def create_report(
         [
             [
                 Paragraph(
-                    explanation,
+                    xai_content,
                     xai_text,
                 )
             ]
@@ -873,86 +983,57 @@ def create_report(
             ]
         )
     )
+    story.append(scope_table)
+    story.append(Spacer(1, 8 * mm))
 
     # ---------------------------------------------------------
     # Detection Summary
     # ---------------------------------------------------------
 
-    story.append(
-        Paragraph(
-        "Detection Summary",
-        section_title,
-        )
-    )
+    if is_summary:
+        story.append(Paragraph("Detection Summary", section_title))
 
-    if inspection.defect_class and inspection.defect_class.lower() not in [
-        "none",
-        "normal",
-        "no defect",
-        "no defects",
-    ]:
-    
-        detection_rows = [
-        [
-            cell_label("DEFECT"),
-            cell_label("RESULT"),
-        ],
-        [
-            cell_value(inspection.defect_class),
-            Paragraph(
-                "<b>DEFECT DETECTED</b>",
-                ParagraphStyle(
-                    "DetectionFail",
-                    parent=table_value,
-                    fontName="Helvetica-Bold",
-                    textColor=FAIL_RED,
-                ),
-            ),
-        ],
-    ]
-    else:
-        detection_rows = [
-        [
-            cell_label("DEFECT"),
-            cell_label("RESULT"),
-        ],
-        [
-            cell_value("No defects detected"),
-            Paragraph(
-                "<b>NO DEFECTS</b>",
-                ParagraphStyle(
-                    "DetectionPass",
-                    parent=table_value,
-                    fontName="Helvetica-Bold",
-                    textColor=PASS_GREEN,
-                ),
-            ),
-        ],
-    ]
+        detection_data = [
+            [cell_label("DEFECT CLASS"), cell_value(defect)],
+            [cell_label("RESULT"), cell_value(status)],
+        ]
+
+    elif is_full:
+        story.append(Paragraph("Detection Summary", section_title))
+
+        detection_data = [
+            [cell_label("DEFECT CLASS"), cell_value(defect)],
+            [cell_label("RESULT"), cell_value(status)],
+            [cell_label("MODEL"), cell_value(model_name)],
+            [cell_label("INSPECTION TIME"), cell_value(f"{inspection_time:.2f} seconds")],
+        ]
+
+    else:  # X-MCCV
+        story.append(Paragraph("Detection Summary", section_title))
+
+        detection_data = [
+            [cell_label("DEFECT CLASS"), cell_value(defect)],
+            [cell_label("RESULT"), cell_value(status)],
+            [cell_label("EXPLAINABILITY"), cell_value("X-MCCV Analysis")],
+        ]
 
     detection_table = Table(
-        detection_rows,
-        colWidths=[
-            120 * mm,
-            46 * mm,
-        ],
+        detection_data,
+        colWidths=[65 * mm, 101 * mm]
     )
 
-    detection_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), LIGHT_BG),
-                ("BACKGROUND", (0, 1), (-1, -1), colors.white),
-                ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
-                ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-            ]
-        )
-    )
+    detection_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), HEADER_BG),
+        ("TEXTCOLOR", (0, 0), (0, -1), TEXT_MUTED),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
 
     story.append(detection_table)
     story.append(Spacer(1, 8 * mm))
@@ -961,21 +1042,24 @@ def create_report(
     # Audit configuration
     # ---------------------------------------------------------
 
-    story.append(
-        Paragraph(
-        "Audit Configuration",
-            section_title,
-        )
-    )
+    if is_full or is_xmccv:
 
-    heatmaps = "Enabled" if report_data.get("includeHeatmaps", True) else "Disabled"
-    coordinates = (
+        story.append(
+            Paragraph(
+                "Audit Configuration",
+                section_title,
+            )
+        )
+
+        heatmaps = "Enabled" if embed_gradcam else "Disabled"
+
+        coordinates = (
             "Included"
-            if report_data.get("includeCoordinates", True)
+            if include_opencv_coordinates
             else "Excluded"
         )
 
-    audit_data = [
+        audit_data = [
             [
                 cell_label("GRAD-CAM HEATMAPS"),
                 cell_value(heatmaps),
@@ -986,28 +1070,28 @@ def create_report(
             ],
         ]
 
-    audit_table = Table(
-        audit_data,
-        colWidths=[65 * mm, 101 * mm],
-    )
-
-    audit_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (0, -1), LIGHT_BG),
-                ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
-                ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-            ]
+        audit_table = Table(
+            audit_data,
+            colWidths=[65 * mm, 101 * mm],
         )
-    )
 
-    story.append(audit_table)
-    story.append(Spacer(1, 9 * mm))
+        audit_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (0, -1), LIGHT_BG),
+                    ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            )
+        )
+
+        story.append(audit_table)
+        story.append(Spacer(1, 9 * mm))
 
     # ---------------------------------------------------------
     # Final note
@@ -1062,9 +1146,16 @@ def create_report(
 
     file_size = file_path.stat().st_size
 
+    if is_summary:
+        report_title_db = "PCB Inspection Report — Overview"
+    elif is_full:
+        report_title_db = "PCB Inspection Report — Full Details"
+    else:
+        report_title_db = "PCB Inspection Report — X-MCCV"
+
     report = Report(
         report_id=report_id,
-        title="PCB Inspection Report",
+        title=report_title_db,
         report_type=report_scope,
         inspection_id=inspection.id,
         file_name=filename,
