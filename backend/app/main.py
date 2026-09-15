@@ -199,6 +199,39 @@ def get_inspection_history(
         "pageSize": pageSize,
     }
 
+@app.get("/api/inspection-history/{inspection_id}")
+def get_inspection_history_details(
+    inspection_id: int,
+    db: Session = Depends(get_db)
+):
+    inspection = (
+        db.query(Inspection)
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+
+    if not inspection:
+        return {
+            "status": "ERROR",
+            "message": "Inspection record not found"
+        }
+
+    return {
+        "id": inspection.id,
+        "pcbId": inspection.board_id,
+        "scanDateTime": inspection.created_at,
+        "targetModel": inspection.model_name,
+        "status": inspection.status,
+        "defectClass": inspection.defect_class,
+        "yoloConfidence": inspection.confidence,
+        "cycleTime": inspection.inspection_time,
+        "operator": None,
+        "componentsCount": None,
+        "defectCoordinates": None,
+        "gradCamExplanation": inspection.xai_explanation or "",
+        "verificationDetails": None,
+    }
+
 @app.get("/api/inspection/latest")
 def get_latest_inspection(
     db: Session = Depends(get_db)

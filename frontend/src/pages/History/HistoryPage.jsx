@@ -293,7 +293,7 @@ export default function HistoryPage() {
                   <div className="space-y-1.5">
                     <span className="font-sans text-[9.5px] uppercase tracking-wider text-slate-400 font-bold">1. Presence verification list</span>
                     <div className="space-y-1">
-                      {selectedRecord.verificationDetails.presence.map((item, idx) => (
+                      {(selectedRecord.verificationDetails?.presence ?? []).map((item, idx) => (
                         <div key={idx} className="flex justify-between items-center py-1 border-b border-accent/5">
                           <span className="text-slate-300">{item.component}</span>
                           <span className={item.status === "PASS" ? "text-success font-bold" : "text-danger font-bold"}>
@@ -308,7 +308,7 @@ export default function HistoryPage() {
                   <div className="space-y-1.5 pt-1.5">
                     <span className="font-sans text-[9.5px] uppercase tracking-wider text-slate-400 font-bold">2. Position alignment checklist</span>
                     <div className="space-y-1">
-                      {selectedRecord.verificationDetails.position.map((item, idx) => (
+                      {(selectedRecord.verificationDetails?.position ?? []).map((item, idx) => (
                         <div key={idx} className="flex justify-between items-center py-1 border-b border-accent/5">
                           <span className="text-slate-300">Offset {item.component}</span>
                           <span className={item.status === "PASS" ? "text-success font-bold" : "text-danger font-bold"}>
@@ -323,7 +323,7 @@ export default function HistoryPage() {
                   <div className="space-y-1.5 pt-1.5">
                     <span className="font-sans text-[9.5px] uppercase tracking-wider text-slate-400 font-bold">3. Angular drift checklist</span>
                     <div className="space-y-1">
-                      {selectedRecord.verificationDetails.orientation.map((item, idx) => (
+                      {(selectedRecord.verificationDetails?.orientation ?? []).map((item, idx) => (
                         <div key={idx} className="flex justify-between items-center py-1 border-b border-accent/5">
                           <span className="text-slate-300">Drift {item.component}</span>
                           <span className={item.status === "PASS" ? "text-success font-bold" : "text-danger font-bold"}>

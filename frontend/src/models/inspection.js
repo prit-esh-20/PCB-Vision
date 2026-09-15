@@ -30,7 +30,7 @@ export function normalizeInspectionRecord(record) {
   if (!record) return null;
 
   return {
-    id: record.pcbId ?? record.id ?? record.inspectionId ?? "",
+    id: record.id ?? record.inspectionId ?? "",
     timestamp: record.scanDateTime ?? record.timestamp,
     model: record.targetModel ?? record.model,
     status: record.status,
