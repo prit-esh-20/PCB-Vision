@@ -199,6 +199,31 @@ def get_inspection_history(
         "pageSize": pageSize,
     }
 
+@app.get("/api/reports")
+def get_reports(
+    db: Session = Depends(get_db)
+):
+    reports = (
+        db.query(Report)
+        .order_by(Report.created_at.desc())
+        .all()
+    )
+
+    return [
+        {
+            "id": report.id,
+            "reportId": report.report_id,
+            "title": report.title,
+            "reportType": report.report_type,
+            "inspectionId": report.inspection_id,
+            "fileName": report.file_name,
+            "filePath": report.file_path,
+            "status": report.status,
+            "createdAt": report.created_at,
+        }
+        for report in reports
+    ]
+
 @app.get("/api/inspection-history/{inspection_id}")
 def get_inspection_history_details(
     inspection_id: int,

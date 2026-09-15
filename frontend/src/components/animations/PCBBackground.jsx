@@ -20,13 +20,21 @@ const BLEED = 48; // oversize margin so parallax never reveals layer edges
 function buildPath(width, height, rng, startX) {
   // Orthogonal + 45° routed polyline, like autorouted copper.
   const dirs = [
-    [1, 0], [-1, 0], [0, 1], [0, -1],
-    [1, 1], [1, -1], [-1, 1], [-1, -1],
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
   ];
-  const points = [{
-    x: Math.round((startX ?? rng() * width) / GRID) * GRID,
-    y: Math.round((rng() * height) / GRID) * GRID,
-  }];
+  const points = [
+    {
+      x: Math.round((startX ?? rng() * width) / GRID) * GRID,
+      y: Math.round((rng() * height) / GRID) * GRID,
+    },
+  ];
   let dir = dirs[Math.floor(rng() * 4)]; // start orthogonal
   const segments = 3 + Math.floor(rng() * 4);
 
@@ -34,10 +42,18 @@ function buildPath(width, height, rng, startX) {
     const len = (1 + Math.floor(rng() * 4)) * GRID;
     const last = points[points.length - 1];
     const next = { x: last.x + dir[0] * len, y: last.y + dir[1] * len };
-    if (next.x < -BLEED || next.x > width + BLEED || next.y < -BLEED || next.y > height + BLEED) break;
+    if (
+      next.x < -BLEED ||
+      next.x > width + BLEED ||
+      next.y < -BLEED ||
+      next.y > height + BLEED
+    )
+      break;
     points.push(next);
     // turn 45° or 90°, never reverse
-    const candidates = dirs.filter((d) => !(d[0] === -dir[0] && d[1] === -dir[1]) && d !== dir);
+    const candidates = dirs.filter(
+      (d) => !(d[0] === -dir[0] && d[1] === -dir[1]) && d !== dir,
+    );
     dir = candidates[Math.floor(rng() * candidates.length)];
   }
   return points.length > 1 ? points : null;
@@ -47,7 +63,10 @@ function measure(points) {
   const lens = [];
   let total = 0;
   for (let i = 1; i < points.length; i += 1) {
-    const len = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+    const len = Math.hypot(
+      points[i].x - points[i - 1].x,
+      points[i].y - points[i - 1].y,
+    );
     lens.push(len);
     total += len;
   }
@@ -94,7 +113,10 @@ function edgeBiasedX(width, rng) {
 
 function makeTraces(width, height) {
   const rng = Math.random;
-  const count = Math.max(18, Math.min(40, Math.round((width * height) / 60000)));
+  const count = Math.max(
+    18,
+    Math.min(40, Math.round((width * height) / 60000)),
+  );
   const traces = [];
 
   for (let i = 0; i < count; i += 1) {
@@ -109,7 +131,14 @@ function makeTraces(width, height) {
       const sub = [points[v]];
       let bx = points[v].x;
       let by = points[v].y;
-      const bdirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]];
+      const bdirs = [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+        [1, 1],
+        [-1, -1],
+      ];
       const steps = 1 + Math.floor(rng() * 2);
       for (let s = 0; s < steps; s += 1) {
         const d = bdirs[Math.floor(rng() * bdirs.length)];
@@ -236,7 +265,11 @@ function paintTraceLayer(ctx, traces) {
     paintVia(ctx, end.x, end.y, 2.4);
     trace.branches.forEach((b) => {
       paintVia(ctx, b.points[0].x, b.points[0].y, 2.2);
-      paintPad(ctx, b.points[b.points.length - 1].x, b.points[b.points.length - 1].y);
+      paintPad(
+        ctx,
+        b.points[b.points.length - 1].x,
+        b.points[b.points.length - 1].y,
+      );
     });
   });
 }
@@ -396,12 +429,26 @@ export default function PCBBackground() {
       const far = makeLayer();
       far.lctx.fillStyle = BG;
       far.lctx.fillRect(-BLEED, -BLEED, width + BLEED * 2, height + BLEED * 2);
-      const glow = far.lctx.createRadialGradient(width * 0.15, height * 0.1, 0, width * 0.15, height * 0.1, width * 0.6);
+      const glow = far.lctx.createRadialGradient(
+        width * 0.15,
+        height * 0.1,
+        0,
+        width * 0.15,
+        height * 0.1,
+        width * 0.6,
+      );
       glow.addColorStop(0, "rgba(50, 213, 131, 0.05)");
       glow.addColorStop(1, "rgba(50, 213, 131, 0)");
       far.lctx.fillStyle = glow;
       far.lctx.fillRect(-BLEED, -BLEED, width + BLEED * 2, height + BLEED * 2);
-      const glow2 = far.lctx.createRadialGradient(width * 0.9, height * 0.95, 0, width * 0.9, height * 0.95, width * 0.55);
+      const glow2 = far.lctx.createRadialGradient(
+        width * 0.9,
+        height * 0.95,
+        0,
+        width * 0.9,
+        height * 0.95,
+        width * 0.55,
+      );
       glow2.addColorStop(0, "rgba(124, 231, 172, 0.04)");
       glow2.addColorStop(1, "rgba(124, 231, 172, 0)");
       far.lctx.fillStyle = glow2;
@@ -463,24 +510,53 @@ export default function PCBBackground() {
       hexPattern.setTransform(patternScale);
 
       // dynamic entities
+
       pulses = [];
-      const pulseCount = Math.max(6, Math.min(15, Math.round(traces.length * 0.4)));
-      for (let i = 0; i < pulseCount; i += 1) {
-        const t = traces[Math.floor(Math.random() * traces.length)];
-        spawnPulse(pulses, t, { dist: Math.random() * t.total });
+
+      if (traces.length > 0) {
+        const pulseCount = Math.max(
+          6,
+          Math.min(15, Math.round(traces.length * 0.4)),
+        );
+
+        for (let i = 0; i < pulseCount; i += 1) {
+          const t = traces[Math.floor(Math.random() * traces.length)];
+
+          if (t) {
+            spawnPulse(pulses, t, {
+              dist: Math.random() * t.total,
+            });
+          }
+        }
       }
 
       packets = [];
-      const packetCount = Math.max(5, Math.min(13, Math.round(traces.length * 0.35)));
-      for (let i = 0; i < packetCount; i += 1) {
-        const t = traces[Math.floor(Math.random() * traces.length)];
-        spawnPacket(t, { dist: Math.random() * t.total });
+
+      if (traces.length > 0) {
+        const packetCount = Math.max(
+          5,
+          Math.min(13, Math.round(traces.length * 0.35)),
+        );
+
+        for (let i = 0; i < packetCount; i += 1) {
+          const t = traces[Math.floor(Math.random() * traces.length)];
+
+          if (t) {
+            spawnPacket(t, {
+              dist: Math.random() * t.total,
+            });
+          }
+        }
       }
+
       packetTimer = 0;
       nextPacketIn = 500 + Math.random() * 1200;
 
       particles = [];
-      const particleCount = Math.max(24, Math.min(50, Math.round((width * height) / 46000)));
+      const particleCount = Math.max(
+        24,
+        Math.min(50, Math.round((width * height) / 46000)),
+      );
       for (let i = 0; i < particleCount; i += 1) {
         particles.push({
           x: Math.random() * width,
@@ -499,12 +575,24 @@ export default function PCBBackground() {
     const drawStaticComposite = () => {
       // Single still frame for prefers-reduced-motion.
       ctx.clearRect(0, 0, width, height);
-      ctx.drawImage(farLayer, -BLEED, -BLEED, width + BLEED * 2, height + BLEED * 2);
+      ctx.drawImage(
+        farLayer,
+        -BLEED,
+        -BLEED,
+        width + BLEED * 2,
+        height + BLEED * 2,
+      );
       ctx.fillStyle = hexPattern;
       ctx.fillRect(0, 0, width, height);
       ctx.fillStyle = squarePattern;
       ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(nearLayer, -BLEED, -BLEED, width + BLEED * 2, height + BLEED * 2);
+      ctx.drawImage(
+        nearLayer,
+        -BLEED,
+        -BLEED,
+        width + BLEED * 2,
+        height + BLEED * 2,
+      );
     };
 
     let last = performance.now();
@@ -531,12 +619,18 @@ export default function PCBBackground() {
 
       // 2) drifting engineering grids (pattern fills are cheap)
       ctx.save();
-      ctx.translate((gridDrift + eased.x * 10) % 78, (gridDrift * 0.6 + eased.y * 10) % 45);
+      ctx.translate(
+        (gridDrift + eased.x * 10) % 78,
+        (gridDrift * 0.6 + eased.y * 10) % 45,
+      );
       ctx.fillStyle = hexPattern;
       ctx.fillRect(-90, -90, width + 180, height + 180);
       ctx.restore();
       ctx.save();
-      ctx.translate((-gridDrift * 0.5 + eased.x * 8) % 80, (gridDrift * 0.4 + eased.y * 8) % 80);
+      ctx.translate(
+        (-gridDrift * 0.5 + eased.x * 8) % 80,
+        (gridDrift * 0.4 + eased.y * 8) % 80,
+      );
       ctx.fillStyle = squarePattern;
       ctx.fillRect(-80, -80, width + 160, height + 160);
       ctx.restore();
@@ -544,7 +638,13 @@ export default function PCBBackground() {
       // 3) near layer — strongest parallax shift
       const nx = eased.x * 14;
       const ny = eased.y * 14;
-      ctx.drawImage(nearLayer, -BLEED + nx, -BLEED + ny, width + BLEED * 2, height + BLEED * 2);
+      ctx.drawImage(
+        nearLayer,
+        -BLEED + nx,
+        -BLEED + ny,
+        width + BLEED * 2,
+        height + BLEED * 2,
+      );
 
       // 4) signal pulses travelling the copper (aligned with near layer)
       ctx.save();
@@ -583,7 +683,11 @@ export default function PCBBackground() {
         if (alpha <= 0.004) continue;
 
         const head = posAt(p.path.points, p.path.lens, p.dist);
-        const tail = posAt(p.path.points, p.path.lens, Math.max(0, p.dist - 46));
+        const tail = posAt(
+          p.path.points,
+          p.path.lens,
+          Math.max(0, p.dist - 46),
+        );
 
         ctx.strokeStyle = `rgba(50, 213, 131, ${alpha})`;
         ctx.lineWidth = 1.6;
@@ -690,13 +794,20 @@ export default function PCBBackground() {
         ctx.stroke();
         ctx.fillStyle = `rgba(124, 231, 172, ${fade * 0.18})`;
         ctx.beginPath();
-        ctx.arc(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, 1.4, 0, Math.PI * 2);
+        ctx.arc(
+          from.x + (to.x - from.x) * t,
+          from.y + (to.y - from.y) * t,
+          1.4,
+          0,
+          Math.PI * 2,
+        );
         ctx.fill();
       }
 
       neuralNodes.forEach((node) => {
         // slow idle breathing, always desynchronized
-        const idle = 0.03 + 0.025 * Math.sin(now * node.idleSpeed + node.idlePhase);
+        const idle =
+          0.03 + 0.025 * Math.sin(now * node.idleSpeed + node.idlePhase);
         let glow = idle;
         let radius = 1.6;
 
@@ -737,7 +848,11 @@ export default function PCBBackground() {
 
         const px = pt.x + eased.x * 20 * pt.depth;
         const py = pt.y + eased.y * 20 * pt.depth;
-        const alpha = Math.min(0.19, pt.baseAlpha * (0.65 + 0.35 * Math.sin(now * pt.pulseSpeed + pt.phase)));
+        const alpha = Math.min(
+          0.19,
+          pt.baseAlpha *
+            (0.65 + 0.35 * Math.sin(now * pt.pulseSpeed + pt.phase)),
+        );
 
         // connect briefly with a nearby node
         for (let n = 0; n < anchorNodes.length; n += 1) {
