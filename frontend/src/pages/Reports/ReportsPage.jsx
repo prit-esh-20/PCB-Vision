@@ -28,6 +28,13 @@ export default function ReportsPage() {
     includeOpenCvCoordinates: true,
   });
   const { reports, loading, error, refresh } = useReports();
+  const [displayReports, setDisplayReports] = useState([]);
+  const [newReportId, setNewReportId] = useState(null);
+
+  useEffect(() => {
+    setDisplayReports(reports);
+  }, [reports]);
+
   const { notify } = useNotifications();
 
   useEffect(() => {
@@ -54,7 +61,13 @@ export default function ReportsPage() {
       if (report?.viewUrl) {
         window.open(report.viewUrl, "_blank");
       }
-      await refresh();
+      setDisplayReports((currentReports) => [
+        report,
+        ...currentReports,
+      ]);
+
+      setNewReportId(report.id);
+
       notify({
         type: "success",
         title: "Report Compiled",
@@ -271,10 +284,12 @@ export default function ReportsPage() {
                 No reports available yet.
               </div>
             ) : (
-              reports.map((batch) => (
+              displayReports.map((batch) => (
                 <GlassCard
                   key={batch.id}
-                  className="!p-4 text-left"
+                  className={`!p-4 text-left ${
+                    newReportId === batch.id ? "report-card-new" : ""
+                  }`}
                   hoverLift={true}
                   data-report-id={batch.id}
                 >
