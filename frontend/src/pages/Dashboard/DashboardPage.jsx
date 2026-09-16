@@ -64,7 +64,7 @@ const CAMERA_BADGE = {
 export default function DashboardPage() {
   const { user, logout } = useAuth();
   const { stats } = useDashboard();
-  const { notify } = useNotifications();
+  const { items, notify } = useNotifications();
 
   const {
     pcbImage,
@@ -407,7 +407,7 @@ const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
                 className="relative flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
               >
                 <Bell className="h-4 w-4" />
-                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-danger text-[7px] font-bold text-white">{notifications.length}</span>
+                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-danger text-[7px] font-bold text-white">{items.length}</span>
               </button>
               <AnimatePresence>
                 {showNotifications && (
@@ -420,11 +420,12 @@ const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
                   >
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Notifications</p>
                     <div className="space-y-1">
-                      {notifications.map((n) => (
+                      {items.map((n) => (
                         <div key={n.id} className="flex items-start gap-2.5 rounded-lg px-2.5 py-2 text-xs text-slate-300 transition-colors hover:bg-white/5">
                           <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${n.type === "fail" ? "bg-danger" : n.type === "success" ? "bg-success" : "bg-accent"}`} />
                           <div className="flex-1">
-                            <p>{n.text}</p>
+                            <p className="font-medium text-slate-200">{n.title}</p>
+                            <p className="mt-0.5 text-slate-400">{n.message}</p>
                             <p className="text-[10px] text-slate-600">{n.time}</p>
                           </div>
                         </div>
