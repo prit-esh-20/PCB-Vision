@@ -1167,6 +1167,16 @@ def create_report(
     db.commit()
     db.refresh(report)
 
+    notification = Notification(
+        type="success",
+        title="Report Generated",
+        message=f"{report.title} was generated successfully.",
+        inspection_id=inspection.id
+    )
+
+    db.add(notification)
+    db.commit()
+
     return {
         "id": report.id,
         "reportId": report.report_id,
@@ -1538,25 +1548,3 @@ def mark_notifications_read(
         "message": "Notifications marked as read"
     }
 
-@app.post("/api/notifications/test")
-def create_test_notification(
-    db: Session = Depends(get_db)
-):
-    notification = Notification(
-        type="success",
-        title="Test Notification",
-        message="PCBVision notification system is working.",
-    )
-
-    db.add(notification)
-    db.commit()
-    db.refresh(notification)
-
-    return {
-        "id": notification.id,
-        "type": notification.type,
-        "title": notification.title,
-        "message": notification.message,
-        "isRead": notification.is_read,
-        "createdAt": notification.created_at,
-    }
