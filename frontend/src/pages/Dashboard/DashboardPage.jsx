@@ -64,7 +64,7 @@ const CAMERA_BADGE = {
 export default function DashboardPage() {
   const { user, logout } = useAuth();
   const { stats } = useDashboard();
-  const { items, notify } = useNotifications();
+  const { items, notify, markAllAsRead } = useNotifications();
 
   const {
     pcbImage,
@@ -403,11 +403,17 @@ const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
           <div className="flex items-center gap-3">
             <div className="relative" ref={notifRef}>
               <button
-                onClick={() => setShowNotifications(!showNotifications)}
+                onClick={() => {
+                const nextState = !showNotifications;
+                setShowNotifications(nextState);
+                if (nextState) {
+                  markAllAsRead();
+                }
+              }}
                 className="relative flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/5 hover:text-white"
               >
                 <Bell className="h-4 w-4" />
-                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-danger text-[7px] font-bold text-white">{items.length}</span>
+                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-danger text-[7px] font-bold text-white">{items.filter((item) => !item.isRead).length}</span>
               </button>
               <AnimatePresence>
                 {showNotifications && (

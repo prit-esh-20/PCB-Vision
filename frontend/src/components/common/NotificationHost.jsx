@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle, XCircle, Info, X } from "lucide-react";
 import { useNotifications } from "../../context/NotificationContext";
@@ -11,12 +12,15 @@ const STYLES = {
 // Renders notifications that were triggered explicitly. Mounted once at the
 // app root (see App.jsx).
 export default function NotificationHost() {
-  const { items, dismiss } = useNotifications();
+
+  const { items } = useNotifications();
+
+  const [closedIds, setClosedIds] = useState(new Set());
 
   return (
     <div className="fixed right-4 top-4 z-[9998] flex w-80 flex-col gap-2">
       <AnimatePresence>
-        {items.map((item) => {
+        {items.filter((item) => !closedIds.has(item.id)).map((item) => {
           const { icon: Icon, border, text } = STYLES[item.type] || STYLES.info;
           return (
             <motion.div
@@ -35,7 +39,13 @@ export default function NotificationHost() {
                 {item.message && <p className="mt-0.5 text-xs text-slate-300">{item.message}</p>}
               </div>
               <button
-                onClick={() => dismiss(item.id)}
+                onClick={() => {
+                  setClosedIds((prev) => {
+                    const next = new Set(prev);
+                    next.add(item.id);
+                    return next;
+                  });
+                }}
                 className="text-slate-500 transition-colors hover:text-white"
               >
                 <X className="h-3.5 w-3.5" />

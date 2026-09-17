@@ -7,7 +7,7 @@ import uuid
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, File, Depends, FastAPI, Query
 from database import get_db
-from models import Inspection, Detection, Report
+from models import Inspection, Detection, Report, Notification
 from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -1447,12 +1447,23 @@ def run_inspection(
     )
 
     if not inspection:
-        return {"status": "ERROR", "message": "Inspection record not found"}
+        return {
+            "status": "ERROR",
+            "message": "Inspection record not found"
+        }
 
     inspection.status = "PASS"
     inspection.model_name = "Pending"
     inspection.xai_explanation = "ML inspection pending."
 
+    notification = Notification(
+        type="success",
+        title="Inspection Completed",
+        message=f"PCB inspection completed for {inspection.board_id}.",
+        inspection_id=inspection.id
+    )
+
+    db.add(notification)
     db.commit()
     db.refresh(inspection)
 
@@ -1485,4 +1496,67 @@ def get_inspection_image(
         filename=inspection.image_name
     )
 
+@app.get("/api/notifications")
+def get_notifications(
+    db: Session = Depends(get_db)
+):
+    notifications = (
+        db.query(Notification)
+        .order_by(Notification.created_at.desc())
+        .limit(50)
+        .all()
+    )
 
+    return [
+        {
+            "id": notification.id,
+            "type": notification.type,
+            "title": notification.title,
+            "message": notification.message,
+            "isRead": notification.is_read,
+            "inspectionId": notification.inspection_id,
+            "createdAt": notification.created_at,
+        }
+        for notification in notifications
+    ]
+    
+@app.patch("/api/notifications/read")
+def mark_notifications_read(
+    db: Session = Depends(get_db)
+):
+    db.query(Notification).filter(
+        Notification.is_read == False
+    ).update(
+        {Notification.is_read: True},
+        synchronize_session=False
+    )
+
+    db.commit()
+
+    return {
+        "status": "SUCCESS",
+        "message": "Notifications marked as read"
+    }
+
+@app.post("/api/notifications/test")
+def create_test_notification(
+    db: Session = Depends(get_db)
+):
+    notification = Notification(
+        type="success",
+        title="Test Notification",
+        message="PCBVision notification system is working.",
+    )
+
+    db.add(notification)
+    db.commit()
+    db.refresh(notification)
+
+    return {
+        "id": notification.id,
+        "type": notification.type,
+        "title": notification.title,
+        "message": notification.message,
+        "isRead": notification.is_read,
+        "createdAt": notification.created_at,
+    }

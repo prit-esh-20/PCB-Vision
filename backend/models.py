@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, String, Float, Text, ForeignKey
+from sqlalchemy import Column, BigInteger, String, Float, Text, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.types import DateTime
@@ -76,3 +76,28 @@ class Report(Base):
     status = Column(String(30), default="GENERATED")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Notification(Base):
+
+    __tablename__ = "notifications"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+
+    type = Column(String(30), nullable=False)
+
+    title = Column(String(255), nullable=False)
+
+    message = Column(Text, nullable=False)
+
+    is_read = Column(Boolean, default=False, nullable=False)
+
+    inspection_id = Column(
+        BigInteger,
+        ForeignKey("inspections.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now()
+    )
