@@ -490,16 +490,21 @@ const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
                       );
                     })}
                     <div className="my-1 border-t border-accent/5" />
-                    <button
+                   <button
                       onClick={() => {
-                      setShowUserMenu(false);
-                      logout();
-                      navigate("/");
-                    }}
+                        setShowUserMenu(false);
+
+                        navigate("/", { replace: true });
+
+                        setTimeout(() => {
+                          logout();
+                        }, 0);
+                      }}
                       className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-danger"
                     >
-                      <LogOut className="h-3.5 w-3.5" />Logout
-                    </button>
+                      <LogOut className="h-3.5 w-3.5" />
+                      Logout
+                    </button> 
                   </motion.div>
                 )}
               </AnimatePresence>

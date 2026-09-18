@@ -1,5 +1,7 @@
+import csv
+from io import StringIO
 from datetime import datetime, timezone
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pathlib import Path
@@ -119,6 +121,62 @@ def get_inspections(db: Session = Depends(get_db)):
     )
 
     return inspections
+
+@app.get("/api/inspection/export/csv")
+def export_inspection_csv(
+    db: Session = Depends(get_db)
+):
+    inspections = (
+        db.query(Inspection)
+        .order_by(Inspection.created_at.desc())
+        .all()
+    )
+
+    output = StringIO()
+
+    writer = csv.writer(output)
+
+    writer.writerow([
+        "ID",
+        "Board ID",
+        "Image Name",
+        "Model",
+        "Status",
+        "Confidence",
+        "Defect Class",
+        "Inspection Time",
+        "XAI Explanation",
+        "Created At",
+    ])
+
+    for inspection in inspections:
+        writer.writerow([
+            inspection.id,
+            inspection.board_id,
+            inspection.image_name,
+            inspection.model_name,
+            inspection.status,
+            inspection.confidence,
+            inspection.defect_class,
+            inspection.inspection_time,
+            inspection.xai_explanation,
+            inspection.created_at,
+        ])
+
+    output.seek(0)
+
+    response = StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+    )
+
+    response.headers["Content-Disposition"] = (
+        'attachment; filename="pcbvision_inspection_export.csv"'
+    )
+
+    response.headers["X-Total-Records"] = str(len(inspections))
+
+    return response
 
 @app.get("/api/inspection-history")
 def get_inspection_history(
