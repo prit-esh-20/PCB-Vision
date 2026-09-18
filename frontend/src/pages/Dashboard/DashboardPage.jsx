@@ -15,6 +15,7 @@ import { useSnapshot } from "../../hooks/useSnapshot";
 import { useXAI } from "../../hooks/useXAI";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
 import { TREND_7_DAYS } from "../../services/mock/mockData";
+import NotificationHost from "../../components/common/NotificationHost";
 import {
   AreaChart, Area, ResponsiveContainer,
 } from "recharts";
@@ -386,6 +387,7 @@ const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
 
   return (
     <AppLayout>
+          <NotificationHost />
         {/* ========== TOP BAR ========== */}
         <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-accent/10 bg-primary-bg/90 px-6 backdrop-blur-xl">
           <div className={`relative flex items-center transition-all duration-300 ${searchFocused ? "w-[500px]" : "w-80"}`}>

@@ -21,7 +21,6 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 
 // Notifications
 import { NotificationProvider } from "./context/NotificationContext";
-import NotificationHost from "./components/common/NotificationHost";
 
 // Hooks
 import useSmoothScroll from "./hooks/useSmoothScroll";
@@ -64,7 +63,6 @@ function AppShellWithAuth() {
     <AuthProvider>
       <NotificationProvider>
         <AppShell />
-        <NotificationHost />
       </NotificationProvider>
     </AuthProvider>
   );
