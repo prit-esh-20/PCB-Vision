@@ -12,10 +12,13 @@ const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
   const [items, setItems] = useState([]);
+  const [notificationsLoaded, setNotificationsLoaded] = useState(false);
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const response = await fetch(`${API_CONFIG.baseUrl}/notifications`);
+      const response = await fetch(
+        `${API_CONFIG.baseUrl}/notifications`
+      );
 
       if (!response.ok) {
         throw new Error("Failed to fetch notifications");
@@ -24,6 +27,7 @@ export function NotificationProvider({ children }) {
       const data = await response.json();
 
       setItems(data);
+      setNotificationsLoaded(true);
     } catch (error) {
       console.error("Failed to load notifications:", error);
     }
@@ -86,12 +90,13 @@ export function NotificationProvider({ children }) {
   return (
     <NotificationContext.Provider
       value={{
-        items,
-        notify,
-        dismiss,
-        fetchNotifications,
-        markAllAsRead,
-      }}
+      items,
+      notify,
+      dismiss,
+      fetchNotifications,
+      markAllAsRead,
+      notificationsLoaded,
+    }}
     >
       {children}
     </NotificationContext.Provider>

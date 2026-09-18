@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import AppLayout from "../../components/layout/AppLayout";
 import GlassCard from "../../components/cards/GlassCard";
@@ -63,6 +64,7 @@ const CAMERA_BADGE = {
 };
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { stats } = useDashboard();
   const { items, notify, markAllAsRead } = useNotifications();
@@ -113,6 +115,7 @@ export default function DashboardPage() {
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [summaryView, setSummaryView] = useState(false);
@@ -467,14 +470,32 @@ const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
                     {[{ label: "Profile", icon: User }, { label: "Settings", icon: Settings }].map((item) => {
                       const Icon = item.icon;
                       return (
-                        <button key={item.label} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-slate-300 transition-colors hover:bg-white/5 hover:text-white">
-                          <Icon className="h-3.5 w-3.5" />{item.label}
+                       <button
+                          key={item.label}
+                          onClick={() => {
+                            if (item.label === "Profile") {
+                              setShowProfile(true);
+                            }
+
+                            if (item.label === "Settings") {
+                              setShowUserMenu(false);
+                              navigate("/settings");
+                            }
+                          }}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          {item.label}
                         </button>
                       );
                     })}
                     <div className="my-1 border-t border-accent/5" />
                     <button
-                      onClick={() => { logout(); window.location.href = "/"; }}
+                      onClick={() => {
+                      setShowUserMenu(false);
+                      logout();
+                      navigate("/");
+                    }}
                       className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs text-slate-400 transition-colors hover:bg-white/5 hover:text-danger"
                     >
                       <LogOut className="h-3.5 w-3.5" />Logout
@@ -1133,6 +1154,73 @@ const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
 
           </div>
         </motion.main>
+        {showProfile && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border border-accent/10 bg-card-bg p-6 shadow-2xl">
+              
+              <div className="flex items-center justify-between border-b border-accent/10 pb-4">
+                <div>
+                  <p className="font-display text-xs font-bold uppercase tracking-widest text-accent">
+                    User Profile
+                  </p>
+                  <p className="mt-1 text-[10px] text-slate-500">
+                    Account information
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setShowProfile(false)}
+                  className="text-slate-500 transition-colors hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-5 flex items-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent text-lg font-bold text-primary-bg">
+                  {user?.name?.charAt(0)?.toUpperCase() || "U"}
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    {user?.name || "User"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {user?.email || "user@pcbvision.xai"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <div className="flex items-center justify-between rounded-lg border border-accent/5 bg-white/[0.02] px-3 py-2.5">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                    Role
+                  </span>
+                  <span className="text-xs text-slate-300">
+                    Inspector
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between rounded-lg border border-accent/5 bg-white/[0.02] px-3 py-2.5">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                    Status
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-success">
+                    <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                    Active
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowProfile(false)}
+                className="mt-6 w-full rounded-lg border border-accent/15 bg-accent/5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-accent transition-colors hover:bg-accent/10"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
     </AppLayout>
   );
 }

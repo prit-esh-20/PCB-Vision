@@ -22,7 +22,7 @@ const STYLES = {
 };
 
 export default function NotificationHost() {
-  const { items } = useNotifications();
+  const { items, notificationsLoaded } = useNotifications();
 
   const [visibleItems, setVisibleItems] = useState([]);
   const [closedIds, setClosedIds] = useState(new Set());
@@ -31,9 +31,12 @@ export default function NotificationHost() {
   const initializedRef = useRef(false);
 
   useEffect(() => {
-    if (!items) return;
+    // Wait until the initial backend notification
+    // fetch has completed.
+    if (!notificationsLoaded) return;
 
-    // First load: remember existing notifications,
+    // First completed backend load:
+    // remember existing notifications,
     // but DO NOT show them as popups.
     if (!initializedRef.current) {
       knownIdsRef.current = new Set(
@@ -44,7 +47,7 @@ export default function NotificationHost() {
       return;
     }
 
-    // Only notifications that were not present before
+    // Only notifications added after the initial load
     // should appear as new popups.
     const newItems = items.filter(
       (item) => !knownIdsRef.current.has(item.id)
@@ -60,7 +63,7 @@ export default function NotificationHost() {
         knownIdsRef.current.add(item.id);
       });
     }
-  }, [items]);
+  }, [items, notificationsLoaded]);
 
   const closeNotification = (id) => {
     setClosedIds((prev) => {
