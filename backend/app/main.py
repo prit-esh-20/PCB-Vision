@@ -1,13 +1,5 @@
 import psutil
 
-def get_rpi_temperature():
-    try:
-        with open("/sys/class/thermal/thermal_zone0/temp", "r") as file:
-            temperature = int(file.read().strip()) / 1000
-        return f"{temperature:.1f}°C"
-    except (FileNotFoundError, ValueError, OSError):
-        return "—"
-
 import csv
 from io import StringIO
 from datetime import datetime, timezone
@@ -32,6 +24,27 @@ from fastapi import FastAPI
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+def get_rpi_cpu_usage():
+    try:
+        with open("/proc/device-tree/model", "r") as file:
+            model = file.read().strip("\x00").strip()
+
+        if "Raspberry Pi" not in model:
+            return "—"
+
+        return f"{psutil.cpu_percent(interval=0.1):.1f}%"
+
+    except (FileNotFoundError, OSError):
+        return "—"
+
+def get_rpi_temperature():
+    try:
+        with open("/sys/class/thermal/thermal_zone0/temp", "r") as file:
+            temperature = int(file.read().strip()) / 1000
+        return f"{temperature:.1f}°C"
+    except (FileNotFoundError, ValueError, OSError):
+        return "—"
 
 app = FastAPI(
     title="PCBVision API",
@@ -1499,7 +1512,7 @@ def get_dashboard_stats(
             **today_stats,
             "systemUptime": "—",
             "rpiTemp": get_rpi_temperature(),
-            "cpu": f"{psutil.cpu_percent(interval=0.1):.1f}%",
+            "cpu": get_rpi_cpu_usage(),
             "fps": "—",
         },
         "yesterday": yesterday_stats,
