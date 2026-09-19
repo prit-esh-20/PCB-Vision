@@ -1,4 +1,13 @@
 import psutil
+
+def get_rpi_temperature():
+    try:
+        with open("/sys/class/thermal/thermal_zone0/temp", "r") as file:
+            temperature = int(file.read().strip()) / 1000
+        return f"{temperature:.1f}°C"
+    except (FileNotFoundError, ValueError, OSError):
+        return "—"
+
 import csv
 from io import StringIO
 from datetime import datetime, timezone
@@ -1489,7 +1498,7 @@ def get_dashboard_stats(
         "today": {
             **today_stats,
             "systemUptime": "—",
-            "rpiTemp": "—",
+            "rpiTemp": get_rpi_temperature(),
             "cpu": f"{psutil.cpu_percent(interval=0.1):.1f}%",
             "fps": "—",
         },
