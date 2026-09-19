@@ -1,5 +1,5 @@
 import psutil
-
+import time
 import csv
 from io import StringIO
 from datetime import datetime, timezone
@@ -24,6 +24,22 @@ from fastapi import FastAPI
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+camera_fps = {
+    "value": None,
+    "last_frame_time": None,
+}
+
+def update_camera_fps():
+    now = time.time()
+
+    if camera_fps["last_frame_time"] is not None:
+        elapsed = now - camera_fps["last_frame_time"]
+
+        if elapsed > 0:
+            camera_fps["value"] = round(1 / elapsed, 1)
+
+    camera_fps["last_frame_time"] = now
 
 def get_rpi_cpu_usage():
     try:
