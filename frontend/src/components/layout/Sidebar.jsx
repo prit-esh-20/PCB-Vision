@@ -1,4 +1,4 @@
-import { useState } from "react";
+// no useState import needed
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -23,10 +23,9 @@ const navItems = [
   { name: "System Settings", path: "/settings", icon: Settings, badge: null },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ collapsed, setCollapsed }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
 
   const handleLogout = () => {
     logout();
