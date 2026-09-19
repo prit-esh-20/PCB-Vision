@@ -285,9 +285,30 @@ export default function DashboardPage() {
     setActionStatus(null);
     const result = await captureSnapshot({ imageElement: imageRef.current, inspection });
     if (!result.ok) {
-      notify({ type: "error", title: "Unable to capture snapshot.", message: result.message });
-      setActionStatus({ type: "error", text: result.message });
+      notify({
+        type: "error",
+        title: "Unable to capture snapshot.",
+        message: result.message,
+      });
+
+      setActionStatus({
+        type: "error",
+        text: result.message,
+      });
+
+      return;
     }
+
+    notify({
+      type: "success",
+      title: "Snapshot Captured",
+      message: `${result.filename} downloaded successfully.`,
+    });
+
+    setActionStatus({
+      type: "success",
+      text: "Snapshot captured successfully.",
+    });
   }, [captureSnapshot, inspection, notify]);
 
   const handleGradCamToggle = useCallback(async () => {
@@ -869,6 +890,7 @@ const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
                             {uploadedImage ? (
                               <img
                                 ref={imageRef}
+                                crossOrigin="anonymous"
                                 src={uploadedImage.url}
                                 alt={`Uploaded PCB: ${uploadedImage.name}`}
                                 onLoad={handleImageLoad}
