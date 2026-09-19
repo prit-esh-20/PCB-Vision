@@ -1,3 +1,4 @@
+import psutil
 import csv
 from io import StringIO
 from datetime import datetime, timezone
@@ -1489,7 +1490,7 @@ def get_dashboard_stats(
             **today_stats,
             "systemUptime": "—",
             "rpiTemp": "—",
-            "cpu": "—",
+            "cpu": f"{psutil.cpu_percent(interval=0.1):.1f}%",
             "fps": "—",
         },
         "yesterday": yesterday_stats,
