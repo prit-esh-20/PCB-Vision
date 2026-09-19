@@ -33,6 +33,19 @@ export const inspectionApi = {
     return normalizeInspection(data);
   },
 
+  async getCameraStatus() {
+    if (API_CONFIG.useMock) {
+      return {
+        status: "DISCONNECTED",
+        connected: false,
+        message: "Camera is not connected.",
+      };
+    }
+
+    const { data } = await apiClient.get("/camera/status");
+    return data;
+  },
+
   async runInspection(payload) {
     if (API_CONFIG.useMock) {
       return inspectionMock.runInspection(payload);

@@ -3,6 +3,7 @@ import AppLayout from "../../components/layout/AppLayout";
 import GlassCard from "../../components/cards/GlassCard";
 import StatusBadge from "../../components/common/StatusBadge";
 import Button from "../../components/common/Button";
+import { inspectionApi } from "../../services/api/inspectionApi";
 import { useInspection, useScanProgress, LIVE_CAMERA_FEED } from "../../hooks/useInspection";
 import ScanningOverlay from "../../components/animations/ScanningOverlay";
 import {
@@ -17,7 +18,47 @@ import {
 } from "lucide-react";
 
 export default function LiveInspectionPage() {
-  const { inspection, error, runInspection, scanPhase, pcbImage, setPcbImage } = useInspection();
+  const {
+    inspection,
+    error,
+    runInspection,
+    scanPhase,
+    pcbImage,
+    setPcbImage,
+  } = useInspection();
+
+  const [cameraStatus, setCameraStatus] = useState({
+    status: "DISCONNECTED",
+    connected: false,
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    const loadCameraStatus = async () => {
+      try {
+        const result = await inspectionApi.getCameraStatus();
+
+        if (active) {
+          setCameraStatus(result);
+        }
+      } catch (error) {
+        if (active) {
+          setCameraStatus({
+            status: "DISCONNECTED",
+            connected: false,
+          });
+        }
+      }
+    };
+
+    loadCameraStatus();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+  
   const progress = useScanProgress();
   const [visualMode, setVisualMode] = useState("yolo"); // "yolo" | "gradcam" | "split"
 
@@ -74,9 +115,16 @@ export default function LiveInspectionPage() {
 
           {/* Quick controls */}
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-md border border-accent/15 bg-accent/5 font-display text-[9px] uppercase tracking-wider font-bold text-accent">
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md border font-display text-[9px] uppercase tracking-wider font-bold ${
+                cameraStatus.connected
+                  ? "border-success/20 bg-success/5 text-success"
+                  : "border-danger/20 bg-danger/5 text-danger"
+              }`}
+            >
               <Activity className="w-3.5 h-3.5" />
-              Camera Status: Ready
+              Camera Status:{" "}
+              {cameraStatus.connected ? "Connected" : "Disconnected"}
             </div>
 
             <Button variant="secondary" className="flex items-center gap-1.5 py-1 px-2.5" onClick={handleStartInspection} disabled={isScanning}>
