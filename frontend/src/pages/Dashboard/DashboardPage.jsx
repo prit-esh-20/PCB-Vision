@@ -311,24 +311,18 @@ export default function DashboardPage() {
     });
   }, [captureSnapshot, inspection, notify]);
 
-  const handleGradCamToggle = useCallback(async () => {
+  const handleGradCamToggle = useCallback(() => {
     if (showGradCam) {
       setShowGradCam(false);
       return;
     }
-    if (!inspection) {
-      notify({ type: "error", title: "Grad-CAM analysis unavailable.", message: "No active inspection to analyze." });
-      return;
-    }
-    if (!gradCam) {
-      const result = await requestGradCam(inspection.inspectionId || inspection.pcbId);
-      if (!result.ok) {
-        notify({ type: "error", title: "Grad-CAM analysis unavailable.", message: result.message });
-        return;
-      }
-    }
-    setShowGradCam(true);
-  }, [showGradCam, gradCam, inspection, requestGradCam, notify]);
+
+    notify({
+      type: "info",
+      title: "Grad-CAM unavailable",
+      message: "Grad-CAM will be available once the trained ML model and XAI pipeline are connected.",
+    });
+  }, [showGradCam, notify]);
 
   // ---- Derived inspection metrics ------------------------------------------
   const presenceFailures = inspection?.verificationDetails?.presence?.filter((p) => p.status === "FAIL").length || 0;
@@ -385,8 +379,7 @@ const xaiFix = isMlPending
       ? "No corrective action required. Board can proceed to the next stage."
       : "Corrective action details are not available from the backend yet. Inspect the highlighted region and rerun the inspection.");
 
-const xaiVisualUrl = xai.visualization || gradCam?.heatmapUrl || null;
-
+const xaiVisualUrl = null;
   const cameraBadge = CAMERA_BADGE[cameraStatus.status] || CAMERA_BADGE.UNKNOWN;
 
   // Bottom status bar presentation per inspection lifecycle state.
