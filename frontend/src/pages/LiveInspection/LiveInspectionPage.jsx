@@ -356,7 +356,21 @@ export default function LiveInspectionPage() {
               {/* Bottom Diagnostics Tag */}
               <div className="absolute bottom-3 left-3 z-[20] flex items-center gap-2 bg-[#050816]/90 border border-accent/15 px-3 py-1.5 rounded font-mono text-[9px] shadow-lg">
                 <span className="text-[#9ca3af]">CAMERA STATUS:</span>
-                <span className={`font-bold ${isScanning ? "text-accent" : "text-[#00E5FF]"}`}>{isScanning ? "SCANNING" : "READY"}</span>
+                <span
+                  className={`font-bold ${
+                    isScanning
+                      ? "text-accent"
+                      : cameraStatus.connected
+                        ? "text-success"
+                        : "text-danger"
+                  }`}
+                >
+                  {isScanning
+                    ? "SCANNING"
+                    : cameraStatus.connected
+                      ? "READY"
+                      : "DISCONNECTED"}
+                </span>
                 <span className={`w-1.5 h-1.5 rounded-full ${isScanning ? "bg-accent led-fast" : "bg-success led-slow"}`} />
                 {inspection && <StatusBadge status={inspection.status} />}
               </div>
@@ -366,9 +380,29 @@ export default function LiveInspectionPage() {
             <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 px-3 py-2 rounded-md border border-accent/10 bg-[#050816]/50">
               {/* Camera status */}
               <div className="flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${isScanning ? "bg-accent led-fast" : "bg-success led-slow"}`} />
-                <span className={`font-mono text-[9px] tracking-widest uppercase font-bold ${isScanning ? "text-accent" : "text-slate-400"}`}>
-                  {isScanning ? "Scanning..." : "Camera Ready"}
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isScanning
+                      ? "bg-accent led-fast"
+                      : cameraStatus.connected
+                        ? "bg-success led-slow"
+                        : "bg-danger"
+                  }`}
+                />
+                <span
+                  className={`font-mono text-[9px] tracking-widest uppercase font-bold ${
+                    isScanning
+                      ? "text-accent"
+                      : cameraStatus.connected
+                        ? "text-success"
+                        : "text-danger"
+                  }`}
+                >
+                  {isScanning
+                    ? "Scanning..."
+                    : cameraStatus.connected
+                      ? "Camera Ready"
+                      : "Camera Disconnected"}
                 </span>
               </div>
 
