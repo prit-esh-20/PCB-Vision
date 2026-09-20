@@ -151,10 +151,13 @@ export default function LiveInspectionPage() {
                   <button
                     key={mode.id}
                     onClick={() => setVisualMode(mode.id)}
-                    className={`px-3 py-1 font-display text-[8px] uppercase tracking-widest font-extrabold rounded-sm transition-all cursor-pointer ${
-                      visualMode === mode.id
-                        ? "bg-accent text-[#050816] shadow-[0_0_8px_#00E5FF]"
-                        : "text-[#9ca3af] hover:text-white"
+                    disabled={cameraDisconnected}
+                    className={`px-3 py-1 font-display text-[8px] uppercase tracking-widest font-extrabold rounded-sm transition-all ${
+                      cameraDisconnected
+                        ? "cursor-not-allowed text-slate-700 opacity-50"
+                        : visualMode === mode.id
+                          ? "bg-accent text-[#050816] shadow-[0_0_8px_#00E5FF]"
+                          : "cursor-pointer text-[#9ca3af] hover:text-white"
                     }`}
                   >
                     {mode.label}
