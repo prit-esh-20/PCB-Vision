@@ -70,6 +70,7 @@ export default function LiveInspectionPage() {
   // Same sequential scan state machine as the Dashboard: both pages read the
   // shared inspection lifecycle and visualize the exact same phase.
   const isScanning = scanPhase === "horizontal" || scanPhase === "vertical";
+  const cameraDisconnected = !cameraStatus.connected;
 
   // The scan is a purely visual overlay: existing detection boxes and the
   // status strip stay visible and stable while scanning (no data is touched).
@@ -167,343 +168,359 @@ export default function LiveInspectionPage() {
               {/* Electronics Schematic background grid */}
               <div className="absolute inset-0 cyber-grid opacity-20" />
 
-              {/* Image container — centered PCB frame; overlays share the same coordinate space */}
-              <div className="relative z-0 flex h-full w-full items-center justify-center">
-                <div
-                  className="relative w-full max-h-full overflow-hidden"
-                  style={{ aspectRatio: "600 / 400" }}
-                >
-                  {/* Grid of circuit tracks */}
-                  <svg
-                    className="relative z-[1] w-full h-full text-accent/20"
-                    viewBox="0 0 600 400"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <rect
-                      x="10"
-                      y="10"
-                      width="580"
-                      height="380"
-                      rx="8"
-                      stroke="currentColor"
-                      strokeWidth="1"
-                    />
-                    <circle
-                      cx="300"
-                      cy="200"
-                      r="50"
-                      stroke="currentColor"
-                      strokeWidth="1"
-                    />
-                    <circle
-                      cx="150"
-                      cy="120"
-                      r="30"
-                      stroke="currentColor"
-                      strokeWidth="1"
-                    />
-                    <rect
-                      x="420"
-                      y="80"
-                      width="80"
-                      height="80"
-                      rx="4"
-                      stroke="currentColor"
-                      strokeWidth="1"
-                    />
-                    <path
-                      d="M10 200h580M300 10v380"
-                      stroke="currentColor"
-                      strokeWidth="0.5"
-                      strokeDasharray="4 4"
-                    />
-                  </svg>
+              {cameraDisconnected ? (
+                <div className="relative z-10 flex flex-col items-center justify-center gap-3 text-center p-6">
+                  <div className="p-4 rounded-full bg-danger/10 border border-danger/20 text-danger mb-1">
+                    <Camera className="w-8 h-8 md:w-10 md:h-10" />
+                  </div>
+                  <h3 className="font-display text-base md:text-lg font-bold text-danger uppercase tracking-wider">
+                    CAMERA DISCONNECTED
+                  </h3>
+                  <p className="font-mono text-xs md:text-sm text-slate-400 max-w-sm">
+                    Connect the inspection camera to begin live capture.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Image container — centered PCB frame; overlays share the same coordinate space */}
+                  <div className="relative z-0 flex h-full w-full items-center justify-center">
+                    <div
+                      className="relative w-full max-h-full overflow-hidden"
+                      style={{ aspectRatio: "600 / 400" }}
+                    >
+                      {/* Grid of circuit tracks */}
+                      <svg
+                        className="relative z-[1] w-full h-full text-accent/20"
+                        viewBox="0 0 600 400"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <rect
+                          x="10"
+                          y="10"
+                          width="580"
+                          height="380"
+                          rx="8"
+                          stroke="currentColor"
+                          strokeWidth="1"
+                        />
+                        <circle
+                          cx="300"
+                          cy="200"
+                          r="50"
+                          stroke="currentColor"
+                          strokeWidth="1"
+                        />
+                        <circle
+                          cx="150"
+                          cy="120"
+                          r="30"
+                          stroke="currentColor"
+                          strokeWidth="1"
+                        />
+                        <rect
+                          x="420"
+                          y="80"
+                          width="80"
+                          height="80"
+                          rx="4"
+                          stroke="currentColor"
+                          strokeWidth="1"
+                        />
+                        <path
+                          d="M10 200h580M300 10v380"
+                          stroke="currentColor"
+                          strokeWidth="0.5"
+                          strokeDasharray="4 4"
+                        />
+                      </svg>
 
-                  {/* Render Visual Mode 1: Standard YOLO Bounding Boxes */}
-                  {inspection && visualMode === "yolo" && isNotPcb && (
-                    <div className="absolute inset-0 z-[2] flex flex-col items-center justify-center gap-2 bg-black/40 rounded-lg">
-                      <span className="font-mono text-[11px] tracking-[0.3em] text-danger uppercase font-bold">
-                        Not a PCB
-                      </span>
-                      <span className="max-w-[70%] text-center font-mono text-[9px] text-slate-400">
-                        Uploaded image could not be identified as a valid PCB.
-                      </span>
-                    </div>
-                  )}
-
-                  {inspection && visualMode === "yolo" && !isNotPcb && (
-                    <>
-                      {inspection.detections?.length > 0 &&
-                        inspection.detections.map((det) => (
-                          <div
-                            key={det.id}
-                            className="absolute z-[2] border-2 border-success bg-success/5 rounded font-mono text-[9px] text-success font-bold p-1"
-                            style={{
-                              left: `${det.bbox.left}%`,
-                              top: `${det.bbox.top}%`,
-                              width: `${det.bbox.width}%`,
-                              height: `${det.bbox.height}%`,
-                            }}
-                          >
-                            <span className="block">{det.label}</span>
-                            <span>CONF: {det.confidence}%</span>
-                          </div>
-                        ))}
-
-                      {defect && (
-                        <div
-                          className="absolute z-[2] border-2 border-danger bg-danger/10 rounded font-mono text-[9px] text-danger font-bold p-1 animate-pulse"
-                          style={{
-                            left: `${(defect.boundingBox?.x / 600) * 100}%`,
-                            top: `${(defect.boundingBox?.y / 400) * 100}%`,
-                            width: `${(((defect.boundingBox?.radius || 45) * 2) / 600) * 100}%`,
-                            height: `${(((defect.boundingBox?.radius || 45) * 2) / 400) * 100}%`,
-                          }}
-                        >
-                          <span className="block">
-                            {defect.type.toUpperCase()}
+                      {/* Render Visual Mode 1: Standard YOLO Bounding Boxes */}
+                      {inspection && visualMode === "yolo" && isNotPcb && (
+                        <div className="absolute inset-0 z-[2] flex flex-col items-center justify-center gap-2 bg-black/40 rounded-lg">
+                          <span className="font-mono text-[11px] tracking-[0.3em] text-danger uppercase font-bold">
+                            Not a PCB
                           </span>
-                          <span>CONF: {defect.confidence}%</span>
+                          <span className="max-w-[70%] text-center font-mono text-[9px] text-slate-400">
+                            Uploaded image could not be identified as a valid PCB.
+                          </span>
                         </div>
                       )}
-                    </>
-                  )}
 
-                  {/* Render Visual Mode 2: Grad-CAM Overlay Heatmap */}
-                  {inspection && visualMode === "gradcam" && (
-                    <>
-                      <div
-                        className="absolute z-[2] rounded-full pointer-events-none transition-all duration-300 blur-[35px]"
-                        style={{
-                          left: defect
-                            ? `${(defect.boundingBox?.x / 600) * 100 + 8}%`
-                            : "52%",
-                          top: defect
-                            ? `${(defect.boundingBox?.y / 400) * 100 + 8}%`
-                            : "48%",
-                          width: defect
-                            ? `${(defect.boundingBox?.radius || 45) * 3}px`
-                            : "160px",
-                          height: defect
-                            ? `${(defect.boundingBox?.radius || 45) * 3}px`
-                            : "160px",
-                          background: `radial-gradient(circle, ${inspection.status === "FAIL" ? "rgba(255,77,109,0.95)" : "rgba(0,229,255,0.95)"} 0%, rgba(255,200,87,0.5) 45%, transparent 70%)`,
-                          opacity: 0.85,
-                        }}
-                      />
-                      <div className="absolute bottom-4 right-4 z-[2] bg-[#050816]/95 border border-accent/15 px-3 py-1.5 rounded font-mono text-[8px] text-slate-400">
-                        Activation map: {inspection.gradCamLayer}
-                      </div>
-                    </>
-                  )}
+                      {inspection && visualMode === "yolo" && !isNotPcb && (
+                        <>
+                          {inspection.detections?.length > 0 &&
+                            inspection.detections.map((det) => (
+                              <div
+                                key={det.id}
+                                className="absolute z-[2] border-2 border-success bg-success/5 rounded font-mono text-[9px] text-success font-bold p-1"
+                                style={{
+                                  left: `${det.bbox.left}%`,
+                                  top: `${det.bbox.top}%`,
+                                  width: `${det.bbox.width}%`,
+                                  height: `${det.bbox.height}%`,
+                                }}
+                              >
+                                <span className="block">{det.label}</span>
+                                <span>CONF: {det.confidence}%</span>
+                              </div>
+                            ))}
 
-                  {/* AOI scan animation — same container as the PCB image, above
-                      the image and the detection overlays */}
-                  {isScanning && pcbImage && (
-                    <ScanningOverlay phase={scanPhase} />
-                  )}
-                </div>
-              </div>
+                          {defect && (
+                            <div
+                              className="absolute z-[2] border-2 border-danger bg-danger/10 rounded font-mono text-[9px] text-danger font-bold p-1 animate-pulse"
+                              style={{
+                                left: `${(defect.boundingBox?.x / 600) * 100}%`,
+                                top: `${(defect.boundingBox?.y / 400) * 100}%`,
+                                width: `${(((defect.boundingBox?.radius || 45) * 2) / 600) * 100}%`,
+                                height: `${(((defect.boundingBox?.radius || 45) * 2) / 400) * 100}%`,
+                              }}
+                            >
+                              <span className="block">
+                                {defect.type.toUpperCase()}
+                              </span>
+                              <span>CONF: {defect.confidence}%</span>
+                            </div>
+                          )}
+                        </>
+                      )}
 
-              {/* Error state */}
-              {!isScanning && error && (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 gap-2">
-                  <span className="font-mono text-[10px] tracking-[0.3em] text-danger uppercase font-bold">
-                    Unable to retrieve inspection data
-                  </span>
-                  <button
-                    onClick={handleStartInspection}
-                    className="font-mono text-[9px] text-accent underline underline-offset-4 cursor-pointer"
-                  >
-                    Please try again
-                  </button>
-                </div>
-              )}
+                      {/* Render Visual Mode 2: Grad-CAM Overlay Heatmap */}
+                      {inspection && visualMode === "gradcam" && (
+                        <>
+                          <div
+                            className="absolute z-[2] rounded-full pointer-events-none transition-all duration-300 blur-[35px]"
+                            style={{
+                              left: defect
+                                ? `${(defect.boundingBox?.x / 600) * 100 + 8}%`
+                                : "52%",
+                              top: defect
+                                ? `${(defect.boundingBox?.y / 400) * 100 + 8}%`
+                                : "48%",
+                              width: defect
+                                ? `${(defect.boundingBox?.radius || 45) * 3}px`
+                                : "160px",
+                              height: defect
+                                ? `${(defect.boundingBox?.radius || 45) * 3}px`
+                                : "160px",
+                              background: `radial-gradient(circle, ${inspection.status === "FAIL" ? "rgba(255,77,109,0.95)" : "rgba(0,229,255,0.95)"} 0%, rgba(255,200,87,0.5) 45%, transparent 70%)`,
+                              opacity: 0.85,
+                            }}
+                          />
+                          <div className="absolute bottom-4 right-4 z-[2] bg-[#050816]/95 border border-accent/15 px-3 py-1.5 rounded font-mono text-[8px] text-slate-400">
+                            Activation map: {inspection.gradCamLayer}
+                          </div>
+                        </>
+                      )}
 
-              {/* Empty state — no inspection result yet */}
-              {!isScanning && !error && !inspection && (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2">
-                  <span className="font-mono text-[11px] tracking-[0.3em] text-slate-400 uppercase font-bold">
-                    Waiting for inspection
-                  </span>
-                  <span className="font-mono text-[9px] text-slate-600">
-                    Press START INSPECTION to run an inspection
-                  </span>
-                </div>
-              )}
+                      {/* AOI scan animation — same container as the PCB image, above
+                          the image and the detection overlays */}
+                      {isScanning && pcbImage && (
+                        <ScanningOverlay phase={scanPhase} />
+                      )}
+                    </div>
+                  </div>
 
-              {/* Render Visual Mode 3: Split (Side-by-Side) */}
-              {inspection && visualMode === "split" && (
-                <div className="relative grid grid-cols-2 w-full h-full divide-x divide-accent/20">
-                  {/* Left: YOLO Detect */}
-                  <div className="relative w-full h-full flex items-center justify-center">
-                    <div
-                      className="relative w-full max-h-full overflow-hidden"
-                      style={{ aspectRatio: "600 / 400" }}
-                    >
-                      <svg
-                        className="relative z-[1] w-full h-full text-accent/20 opacity-40"
-                        viewBox="0 0 600 400"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
+                  {/* Error state */}
+                  {!isScanning && error && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 gap-2">
+                      <span className="font-mono text-[10px] tracking-[0.3em] text-danger uppercase font-bold">
+                        Unable to retrieve inspection data
+                      </span>
+                      <button
+                        onClick={handleStartInspection}
+                        className="font-mono text-[9px] text-accent underline underline-offset-4 cursor-pointer"
                       >
-                        <rect
-                          x="10"
-                          y="10"
-                          width="580"
-                          height="380"
-                          rx="8"
-                          stroke="currentColor"
-                          strokeWidth="1"
-                        />
-                        <circle
-                          cx="300"
-                          cy="200"
-                          r="50"
-                          stroke="currentColor"
-                          strokeWidth="1"
-                        />
-                        <circle
-                          cx="150"
-                          cy="120"
-                          r="30"
-                          stroke="currentColor"
-                          strokeWidth="1"
-                        />
-                        <rect
-                          x="420"
-                          y="80"
-                          width="80"
-                          height="80"
-                          rx="4"
-                          stroke="currentColor"
-                          strokeWidth="1"
-                        />
-                        <path
-                          d="M10 200h580M300 10v380"
-                          stroke="currentColor"
-                          strokeWidth="0.5"
-                          strokeDasharray="4 4"
-                        />
-                      </svg>
-                      {inspection.detections.slice(0, 1).map((det) => (
+                        Please try again
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Empty state — no inspection result yet */}
+                  {!isScanning && !error && !inspection && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2">
+                      <span className="font-mono text-[11px] tracking-[0.3em] text-slate-400 uppercase font-bold">
+                        Waiting for inspection
+                      </span>
+                      <span className="font-mono text-[9px] text-slate-600">
+                        Press START INSPECTION to run an inspection
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Render Visual Mode 3: Split (Side-by-Side) */}
+                  {inspection && visualMode === "split" && (
+                    <div className="relative grid grid-cols-2 w-full h-full divide-x divide-accent/20">
+                      {/* Left: YOLO Detect */}
+                      <div className="relative w-full h-full flex items-center justify-center">
                         <div
-                          key={det.id}
-                          className="absolute z-[2] border border-success bg-success/5 rounded font-mono text-[8px] text-success p-0.5"
-                          style={{
-                            left: `${det.bbox.left}%`,
-                            top: `${det.bbox.top}%`,
-                            width: `${det.bbox.width}%`,
-                            height: `${det.bbox.height}%`,
-                          }}
+                          className="relative w-full max-h-full overflow-hidden"
+                          style={{ aspectRatio: "600 / 400" }}
                         >
-                          <span>
-                            {det.id}: {det.confidence}%
-                          </span>
+                          <svg
+                            className="relative z-[1] w-full h-full text-accent/20 opacity-40"
+                            viewBox="0 0 600 400"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <rect
+                              x="10"
+                              y="10"
+                              width="580"
+                              height="380"
+                              rx="8"
+                              stroke="currentColor"
+                              strokeWidth="1"
+                            />
+                            <circle
+                              cx="300"
+                              cy="200"
+                              r="50"
+                              stroke="currentColor"
+                              strokeWidth="1"
+                            />
+                            <circle
+                              cx="150"
+                              cy="120"
+                              r="30"
+                              stroke="currentColor"
+                              strokeWidth="1"
+                            />
+                            <rect
+                              x="420"
+                              y="80"
+                              width="80"
+                              height="80"
+                              rx="4"
+                              stroke="currentColor"
+                              strokeWidth="1"
+                            />
+                            <path
+                              d="M10 200h580M300 10v380"
+                              stroke="currentColor"
+                              strokeWidth="0.5"
+                              strokeDasharray="4 4"
+                            />
+                          </svg>
+                          {inspection.detections.slice(0, 1).map((det) => (
+                            <div
+                              key={det.id}
+                              className="absolute z-[2] border border-success bg-success/5 rounded font-mono text-[8px] text-success p-0.5"
+                              style={{
+                                left: `${det.bbox.left}%`,
+                                top: `${det.bbox.top}%`,
+                                width: `${det.bbox.width}%`,
+                                height: `${det.bbox.height}%`,
+                              }}
+                            >
+                              <span>
+                                {det.id}: {det.confidence}%
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                    <span className="absolute top-2 left-2 font-mono text-[8px] bg-secondary-bg px-2 py-0.5 border border-accent/10 rounded">
-                      RAW YOLO
-                    </span>
-                  </div>
+                        <span className="absolute top-2 left-2 font-mono text-[8px] bg-secondary-bg px-2 py-0.5 border border-accent/10 rounded">
+                          RAW YOLO
+                        </span>
+                      </div>
 
-                  {/* Right: Grad-CAM Overlay */}
-                  <div className="relative w-full h-full flex items-center justify-center bg-accent/5">
-                    <div
-                      className="relative w-full max-h-full overflow-hidden"
-                      style={{ aspectRatio: "600 / 400" }}
-                    >
-                      <svg
-                        className="relative z-[1] w-full h-full text-accent/20 opacity-40"
-                        viewBox="0 0 600 400"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <rect
-                          x="10"
-                          y="10"
-                          width="580"
-                          height="380"
-                          rx="8"
-                          stroke="currentColor"
-                          strokeWidth="1"
-                        />
-                        <circle
-                          cx="300"
-                          cy="200"
-                          r="50"
-                          stroke="currentColor"
-                          strokeWidth="1"
-                        />
-                        <circle
-                          cx="150"
-                          cy="120"
-                          r="30"
-                          stroke="currentColor"
-                          strokeWidth="1"
-                        />
-                        <rect
-                          x="420"
-                          y="80"
-                          width="80"
-                          height="80"
-                          rx="4"
-                          stroke="currentColor"
-                          strokeWidth="1"
-                        />
-                        <path
-                          d="M10 200h580M300 10v380"
-                          stroke="currentColor"
-                          strokeWidth="0.5"
-                          strokeDasharray="4 4"
-                        />
-                      </svg>
-                      <div
-                        className="absolute z-[2] rounded-full pointer-events-none blur-[25px]"
-                        style={{
-                          left: defect
-                            ? `${(defect.boundingBox?.x / 600) * 100}%`
-                            : "35%",
-                          top: defect
-                            ? `${(defect.boundingBox?.y / 400) * 100}%`
-                            : "35%",
-                          width: "100px",
-                          height: "100px",
-                          background: `radial-gradient(circle, ${inspection.status === "FAIL" ? "rgba(255,77,109,0.9)" : "rgba(0,229,255,0.9)"} 0%, rgba(255,200,87,0.55) 45%, transparent 70%)`,
-                          opacity: 0.85,
-                        }}
-                      />
-                    </div>
-                    <span className="absolute top-2 left-2 font-mono text-[8px] bg-secondary-bg px-2 py-0.5 border border-accent/10 rounded">
-                      XAI HEATMAP
-                    </span>
-                  </div>
+                      {/* Right: Grad-CAM Overlay */}
+                      <div className="relative w-full h-full flex items-center justify-center bg-accent/5">
+                        <div
+                          className="relative w-full max-h-full overflow-hidden"
+                          style={{ aspectRatio: "600 / 400" }}
+                        >
+                          <svg
+                            className="relative z-[1] w-full h-full text-accent/20 opacity-40"
+                            viewBox="0 0 600 400"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <rect
+                              x="10"
+                              y="10"
+                              width="580"
+                              height="380"
+                              rx="8"
+                              stroke="currentColor"
+                              strokeWidth="1"
+                            />
+                            <circle
+                              cx="300"
+                              cy="200"
+                              r="50"
+                              stroke="currentColor"
+                              strokeWidth="1"
+                            />
+                            <circle
+                              cx="150"
+                              cy="120"
+                              r="30"
+                              stroke="currentColor"
+                              strokeWidth="1"
+                            />
+                            <rect
+                              x="420"
+                              y="80"
+                              width="80"
+                              height="80"
+                              rx="4"
+                              stroke="currentColor"
+                              strokeWidth="1"
+                            />
+                            <path
+                              d="M10 200h580M300 10v380"
+                              stroke="currentColor"
+                              strokeWidth="0.5"
+                              strokeDasharray="4 4"
+                            />
+                          </svg>
+                          <div
+                            className="absolute z-[2] rounded-full pointer-events-none blur-[25px]"
+                            style={{
+                              left: defect
+                                ? `${(defect.boundingBox?.x / 600) * 100}%`
+                                : "35%",
+                              top: defect
+                                ? `${(defect.boundingBox?.y / 400) * 100}%`
+                                : "35%",
+                              width: "100px",
+                              height: "100px",
+                              background: `radial-gradient(circle, ${inspection.status === "FAIL" ? "rgba(255,77,109,0.9)" : "rgba(0,229,255,0.9)"} 0%, rgba(255,200,87,0.55) 45%, transparent 70%)`,
+                              opacity: 0.85,
+                            }}
+                          />
+                        </div>
+                        <span className="absolute top-2 left-2 font-mono text-[8px] bg-secondary-bg px-2 py-0.5 border border-accent/10 rounded">
+                          XAI HEATMAP
+                        </span>
+                      </div>
 
-                  {/* AOI scan animation over the split view */}
-                  {isScanning && pcbImage && (
-                    <ScanningOverlay phase={scanPhase} />
+                      {/* AOI scan animation over the split view */}
+                      {isScanning && pcbImage && (
+                        <ScanningOverlay phase={scanPhase} />
+                      )}
+                    </div>
                   )}
-                </div>
-              )}
 
-              {/* Compact scan progress indicator — viewport corner, clear of the PCB */}
-              {isScanning && (
-                <div className="absolute bottom-2 right-2 z-[12] flex items-center gap-2 rounded-md border border-accent/15 bg-[#050816]/90 px-2.5 py-1.5 font-mono text-[8px] shadow-lg">
-                  <span className="text-slate-400 uppercase tracking-widest">
-                    Inspection in progress
-                  </span>
-                  <div className="h-[3px] w-16 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className="h-full rounded-full bg-accent shadow-[0_0_6px_rgba(50,213,131,0.6)]"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                  <span className="font-bold text-accent tracking-wider">
-                    {Math.floor(progress)}%
-                  </span>
-                </div>
+                  {/* Compact scan progress indicator — viewport corner, clear of the PCB */}
+                  {isScanning && (
+                    <div className="absolute bottom-2 right-2 z-[12] flex items-center gap-2 rounded-md border border-accent/15 bg-[#050816]/90 px-2.5 py-1.5 font-mono text-[8px] shadow-lg">
+                      <span className="text-slate-400 uppercase tracking-widest">
+                        Inspection in progress
+                      </span>
+                      <div className="h-[3px] w-16 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-accent shadow-[0_0_6px_rgba(50,213,131,0.6)]"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <span className="font-bold text-accent tracking-wider">
+                        {Math.floor(progress)}%
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Bottom Diagnostics Tag */}
