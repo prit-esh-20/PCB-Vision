@@ -12,7 +12,7 @@ export default function Button({
   const [position, setPosition] = useState({ x: 0, y: 0 });
 
   const handleMouseMove = (e) => {
-    if (!ref.current) return;
+    if (!ref.current || props.disabled) return;
     const { clientX, clientY } = e;
     const { left, top, width, height } = ref.current.getBoundingClientRect();
     const centerX = left + width / 2;
@@ -28,7 +28,7 @@ export default function Button({
   };
 
   const baseStyles =
-    "font-display text-[10px] sm:text-xs uppercase tracking-[0.24em] px-5 py-3 rounded-full cursor-pointer transition-all duration-300 select-none outline-none focus:ring-1 focus:ring-accent/50";
+    "font-display text-[10px] sm:text-xs uppercase tracking-[0.24em] px-5 py-3 rounded-full transition-all duration-300 select-none outline-none focus:ring-1 focus:ring-accent/50";
 
   const variants = {
     primary:
@@ -49,15 +49,23 @@ export default function Button({
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       animate={{ x: position.x, y: position.y, scale: 1 }}
-      whileHover={{
-        y: -2,
-        scale: 1.01,
-        boxShadow: "0 10px 28px rgba(5, 10, 9, 0.24)",
-      }}
+      whileHover={
+        props.disabled
+          ? undefined
+          : {
+              y: -2,
+              scale: 1.01,
+              boxShadow: "0 10px 28px rgba(5, 10, 9, 0.24)",
+            }
+      }
       whileTap={{ scale: 0.98 }}
       transition={{ type: "spring", stiffness: 200, damping: 18, mass: 0.08 }}
       onClick={onClick}
-      className={`${baseStyles} ${variants[variant]} ${className}`}
+      className={`${baseStyles} ${
+        props.disabled
+          ? "cursor-not-allowed opacity-40 grayscale"
+          : "cursor-pointer"
+      } ${variants[variant]} ${className}`}
       {...props}
     >
       {children}
