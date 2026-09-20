@@ -127,7 +127,7 @@ export default function LiveInspectionPage() {
               {cameraStatus.connected ? "Connected" : "Disconnected"}
             </div>
 
-            <Button variant="secondary" className="flex items-center gap-1.5 py-1 px-2.5" onClick={handleStartInspection} disabled={isScanning}>
+            <Button variant="secondary" className="flex items-center gap-1.5 py-1 px-2.5" onClick={handleStartInspection} disabled={isScanning || !cameraStatus.connected}>
               <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? "animate-spin" : ""}`} />
               {isScanning ? "INSPECTING..." : "START INSPECTION"}
             </Button>
