@@ -13,25 +13,42 @@ export function useCameraStatus() {
 
   useEffect(() => {
     let cancelled = false;
-    cameraApi
-      .getStatus()
-      .then((res) => {
+
+    const checkCameraStatus = async () => {
+      try {
+        const res = await cameraApi.getStatus();
+
         if (!cancelled) {
           setCameraStatus({
             status: res?.status || "UNKNOWN",
             message: res?.message || "",
           });
+
           setLoading(false);
         }
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
-          setCameraStatus({ status: "ERROR", message: "Camera status unavailable." });
+          setCameraStatus({
+            status: "ERROR",
+            message: "Camera status unavailable.",
+          });
+
           setLoading(false);
         }
-      });
+      }
+    };
+
+    // Check immediately when the page loads
+    checkCameraStatus();
+
+    // Re-check every 5 seconds
+    const interval = window.setInterval(() => {
+      checkCameraStatus();
+    }, 5000);
+
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
   }, []);
 

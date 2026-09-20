@@ -287,30 +287,22 @@ export default function LiveInspectionPage() {
 
                       {/* Render Visual Mode 2: Grad-CAM Overlay Heatmap */}
                       {inspection && visualMode === "gradcam" && (
-                        <>
-                          <div
-                            className="absolute z-[2] rounded-full pointer-events-none transition-all duration-300 blur-[35px]"
-                            style={{
-                              left: defect
-                                ? `${(defect.boundingBox?.x / 600) * 100 + 8}%`
-                                : "52%",
-                              top: defect
-                                ? `${(defect.boundingBox?.y / 400) * 100 + 8}%`
-                                : "48%",
-                              width: defect
-                                ? `${(defect.boundingBox?.radius || 45) * 3}px`
-                                : "160px",
-                              height: defect
-                                ? `${(defect.boundingBox?.radius || 45) * 3}px`
-                                : "160px",
-                              background: `radial-gradient(circle, ${inspection.status === "FAIL" ? "rgba(255,77,109,0.95)" : "rgba(0,229,255,0.95)"} 0%, rgba(255,200,87,0.5) 45%, transparent 70%)`,
-                              opacity: 0.85,
-                            }}
-                          />
-                          <div className="absolute bottom-4 right-4 z-[2] bg-[#050816]/95 border border-accent/15 px-3 py-1.5 rounded font-mono text-[8px] text-slate-400">
-                            Activation map: {inspection.gradCamLayer}
+                        <div className="absolute inset-0 z-[2] flex items-center justify-center bg-black/20">
+                          <div className="rounded-lg border border-accent/10 bg-[#050816]/90 px-5 py-4 text-center shadow-xl">
+                            <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-accent">
+                              Grad-CAM Overlay
+                            </div>
+
+                            <div className="mt-2 font-mono text-[10px] uppercase tracking-widest text-slate-400">
+                              Awaiting trained ML model
+                            </div>
+
+                            <p className="mt-1 max-w-xs font-sans text-[10px] leading-relaxed text-slate-600">
+                              The XAI heatmap will be generated here once the trained inspection
+                              model and Grad-CAM pipeline are connected.
+                            </p>
                           </div>
-                        </>
+                        </div>
                       )}
 
                       {/* AOI scan animation — same container as the PCB image, above
