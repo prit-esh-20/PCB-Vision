@@ -21,6 +21,7 @@ export function useCameraStatus() {
         if (!cancelled) {
           setCameraStatus({
             status: res?.status || "UNKNOWN",
+            connected: res?.connected === true,
             message: res?.message || "",
           });
 
