@@ -342,153 +342,52 @@ export default function LiveInspectionPage() {
 
                   {/* Render Visual Mode 3: Split (Side-by-Side) */}
                   {inspection && visualMode === "split" && (
-                    <div className="relative grid grid-cols-2 w-full h-full divide-x divide-accent/20">
-                      {/* Left: YOLO Detect */}
-                      <div className="relative w-full h-full flex items-center justify-center">
-                        <div
-                          className="relative w-full max-h-full overflow-hidden"
-                          style={{ aspectRatio: "600 / 400" }}
-                        >
-                          <svg
-                            className="relative z-[1] w-full h-full text-accent/20 opacity-40"
-                            viewBox="0 0 600 400"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <rect
-                              x="10"
-                              y="10"
-                              width="580"
-                              height="380"
-                              rx="8"
-                              stroke="currentColor"
-                              strokeWidth="1"
-                            />
-                            <circle
-                              cx="300"
-                              cy="200"
-                              r="50"
-                              stroke="currentColor"
-                              strokeWidth="1"
-                            />
-                            <circle
-                              cx="150"
-                              cy="120"
-                              r="30"
-                              stroke="currentColor"
-                              strokeWidth="1"
-                            />
-                            <rect
-                              x="420"
-                              y="80"
-                              width="80"
-                              height="80"
-                              rx="4"
-                              stroke="currentColor"
-                              strokeWidth="1"
-                            />
-                            <path
-                              d="M10 200h580M300 10v380"
-                              stroke="currentColor"
-                              strokeWidth="0.5"
-                              strokeDasharray="4 4"
-                            />
-                          </svg>
-                          {inspection.detections.slice(0, 1).map((det) => (
-                            <div
-                              key={det.id}
-                              className="absolute z-[2] border border-success bg-success/5 rounded font-mono text-[8px] text-success p-0.5"
-                              style={{
-                                left: `${det.bbox.left}%`,
-                                top: `${det.bbox.top}%`,
-                                width: `${det.bbox.width}%`,
-                                height: `${det.bbox.height}%`,
-                              }}
-                            >
-                              <span>
-                                {det.id}: {det.confidence}%
-                              </span>
-                            </div>
-                          ))}
+                    <div className="relative grid h-full w-full grid-cols-2 divide-x divide-accent/20">
+
+                      {/* LEFT — YOLO Detection */}
+                      <div className="relative flex h-full w-full items-center justify-center">
+                        <div className="absolute left-2 top-2 z-[4] rounded border border-accent/10 bg-[#050816]/95 px-2 py-0.5">
+                          <span className="font-mono text-[8px] uppercase tracking-widest text-accent">
+                            YOLO DETECT
+                          </span>
                         </div>
-                        <span className="absolute top-2 left-2 font-mono text-[8px] bg-secondary-bg px-2 py-0.5 border border-accent/10 rounded">
-                          RAW YOLO
-                        </span>
+
+                        <div className="flex flex-col items-center justify-center px-4 text-center">
+                          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-400">
+                            Detection Output
+                          </span>
+
+                          <span className="mt-2 font-mono text-[9px] uppercase tracking-widest text-slate-600">
+                            Awaiting trained ML model
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Right: Grad-CAM Overlay */}
-                      <div className="relative w-full h-full flex items-center justify-center bg-accent/5">
-                        <div
-                          className="relative w-full max-h-full overflow-hidden"
-                          style={{ aspectRatio: "600 / 400" }}
-                        >
-                          <svg
-                            className="relative z-[1] w-full h-full text-accent/20 opacity-40"
-                            viewBox="0 0 600 400"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <rect
-                              x="10"
-                              y="10"
-                              width="580"
-                              height="380"
-                              rx="8"
-                              stroke="currentColor"
-                              strokeWidth="1"
-                            />
-                            <circle
-                              cx="300"
-                              cy="200"
-                              r="50"
-                              stroke="currentColor"
-                              strokeWidth="1"
-                            />
-                            <circle
-                              cx="150"
-                              cy="120"
-                              r="30"
-                              stroke="currentColor"
-                              strokeWidth="1"
-                            />
-                            <rect
-                              x="420"
-                              y="80"
-                              width="80"
-                              height="80"
-                              rx="4"
-                              stroke="currentColor"
-                              strokeWidth="1"
-                            />
-                            <path
-                              d="M10 200h580M300 10v380"
-                              stroke="currentColor"
-                              strokeWidth="0.5"
-                              strokeDasharray="4 4"
-                            />
-                          </svg>
-                          <div
-                            className="absolute z-[2] rounded-full pointer-events-none blur-[25px]"
-                            style={{
-                              left: defect
-                                ? `${(defect.boundingBox?.x / 600) * 100}%`
-                                : "35%",
-                              top: defect
-                                ? `${(defect.boundingBox?.y / 400) * 100}%`
-                                : "35%",
-                              width: "100px",
-                              height: "100px",
-                              background: `radial-gradient(circle, ${inspection.status === "FAIL" ? "rgba(255,77,109,0.9)" : "rgba(0,229,255,0.9)"} 0%, rgba(255,200,87,0.55) 45%, transparent 70%)`,
-                              opacity: 0.85,
-                            }}
-                          />
+                      {/* RIGHT — Grad-CAM XAI */}
+                      <div className="relative flex h-full w-full items-center justify-center bg-accent/[0.02]">
+                        <div className="absolute left-2 top-2 z-[4] rounded border border-accent/10 bg-[#050816]/95 px-2 py-0.5">
+                          <span className="font-mono text-[8px] uppercase tracking-widest text-accent">
+                            XAI HEATMAP
+                          </span>
                         </div>
-                        <span className="absolute top-2 left-2 font-mono text-[8px] bg-secondary-bg px-2 py-0.5 border border-accent/10 rounded">
-                          XAI HEATMAP
-                        </span>
+
+                        <div className="flex flex-col items-center justify-center px-4 text-center">
+                          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-400">
+                            Grad-CAM Explanation
+                          </span>
+
+                          <span className="mt-2 font-mono text-[9px] uppercase tracking-widest text-slate-600">
+                            Awaiting trained ML model
+                          </span>
+
+                          <p className="mt-1 max-w-[220px] font-sans text-[9px] leading-relaxed text-slate-700">
+                            The visual explanation will appear here when the trained model and
+                            Grad-CAM pipeline are connected.
+                          </p>
+                        </div>
                       </div>
 
-                      {/* AOI scan animation over the split view */}
+                      {/* AOI scan animation */}
                       {isScanning && pcbImage && (
                         <ScanningOverlay phase={scanPhase} />
                       )}
