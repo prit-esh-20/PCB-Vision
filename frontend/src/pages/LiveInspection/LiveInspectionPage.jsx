@@ -51,7 +51,6 @@ export default function LiveInspectionPage() {
   // Only the XAI panel waits for the scan to finish before revealing the
   // latest result. The inspection itself runs asynchronously — mock today,
   // real API later.
-  const defect = inspection?.defects?.[0] || null;
   const isNotPcb =
     !!inspection &&
     (inspection.isPcb === false ||
@@ -242,23 +241,6 @@ export default function LiveInspectionPage() {
                                 <span>CONF: {det.confidence}%</span>
                               </div>
                             ))}
-
-                          {defect && (
-                            <div
-                              className="absolute z-[2] border-2 border-danger bg-danger/10 rounded font-mono text-[9px] text-danger font-bold p-1 animate-pulse"
-                              style={{
-                                left: `${(defect.boundingBox?.x / 600) * 100}%`,
-                                top: `${(defect.boundingBox?.y / 400) * 100}%`,
-                                width: `${(((defect.boundingBox?.radius || 45) * 2) / 600) * 100}%`,
-                                height: `${(((defect.boundingBox?.radius || 45) * 2) / 400) * 100}%`,
-                              }}
-                            >
-                              <span className="block">
-                                {defect.type.toUpperCase()}
-                              </span>
-                              <span>CONF: {defect.confidence}%</span>
-                            </div>
-                          )}
                         </>
                       )}
 
@@ -474,13 +456,16 @@ export default function LiveInspectionPage() {
               )}
 
               {/* Defect detail on FAIL */}
-              {inspection?.status === "FAIL" && defect && (
-                <span className="flex items-center gap-1.5 font-mono text-[9px] text-danger">
-                  <AlertTriangle className="w-3 h-3 animate-pulse" />
-                  <span className="font-bold uppercase">{defect.type}</span>
-                  <span className="text-danger/70">{defect.confidence}%</span>
-                </span>
-              )}
+              {inspection?.status === "FAIL" &&
+                inspection?.defectClass &&
+                inspection.defectClass !== "None" && (
+                  <span className="flex items-center gap-1.5 font-mono text-[9px] text-danger">
+                    <AlertTriangle className="w-3 h-3 animate-pulse" />
+                    <span className="font-bold uppercase">
+                      {inspection.defectClass}
+                    </span>
+                  </span>
+                )}
             </div>
           </GlassCard>
 
@@ -537,9 +522,11 @@ export default function LiveInspectionPage() {
                           : "text-slate-300"
                       }`}
                     >
-                      {xaiInspection.status === "FAIL" && defect
-                        ? defect.type
-                        : "None"}
+                      {xaiInspection.status === "FAIL" &&
+                        xaiInspection.defectClass &&
+                        xaiInspection.defectClass !== "None"
+                          ? xaiInspection.defectClass
+                          : "None"}
                     </span>
                   </div>
 
@@ -558,9 +545,7 @@ export default function LiveInspectionPage() {
                     </span>
                     <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-slate-300">
                       <Target className="w-3 h-3 text-accent" />
-                      {defect?.boundingBox
-                        ? `(${defect.boundingBox.x}, ${defect.boundingBox.y})`
-                        : "—"}
+                      "—"
                     </span>
                   </div>
                 </div>
