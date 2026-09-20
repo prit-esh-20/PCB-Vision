@@ -6,6 +6,7 @@ import Button from "../../components/common/Button";
 import { inspectionApi } from "../../services/api/inspectionApi";
 import { useInspection, useScanProgress } from "../../hooks/useInspection";
 import ScanningOverlay from "../../components/animations/ScanningOverlay";
+import { useCameraStatus } from "../../hooks/useCameraStatus";
 import {
   Camera,
   Activity,
@@ -18,43 +19,17 @@ import {
 } from "lucide-react";
 
 export default function LiveInspectionPage() {
-  const { inspection, error, runInspection, scanPhase, pcbImage } =
-    useInspection();
+  const { inspection, error, runInspection, scanPhase, pcbImage, setPcbImage } = useInspection();
 
-  const [cameraStatus, setCameraStatus] = useState({
-    status: "DISCONNECTED",
-    connected: false,
-  });
+   const { cameraStatus } = useCameraStatus();
 
-  useEffect(() => {
-    let active = true;
-
-    const loadCameraStatus = async () => {
-      try {
-        const result = await inspectionApi.getCameraStatus();
-
-        if (active) {
-          setCameraStatus(result);
-        }
-      } catch (error) {
-        if (active) {
-          setCameraStatus({
-            status: "DISCONNECTED",
-            connected: false,
-          });
-        }
-      }
-    };
-
-    loadCameraStatus();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  const cameraDisconnected =
+    cameraStatus?.status === "DISCONNECTED";
 
   const progress = useScanProgress();
-  const [visualMode, setVisualMode] = useState("yolo"); // "yolo" | "gradcam" | "split"
+
+  const [visualMode, setVisualMode] = useState("yolo");
+
 
   const modes = [
     { id: "yolo", label: "YOLO Detect" },
@@ -70,7 +45,6 @@ export default function LiveInspectionPage() {
   // Same sequential scan state machine as the Dashboard: both pages read the
   // shared inspection lifecycle and visualize the exact same phase.
   const isScanning = scanPhase === "horizontal" || scanPhase === "vertical";
-  const cameraDisconnected = !cameraStatus.connected;
 
   // The scan is a purely visual overlay: existing detection boxes and the
   // status strip stay visible and stable while scanning (no data is touched).
@@ -151,7 +125,7 @@ export default function LiveInspectionPage() {
                   <button
                     key={mode.id}
                     onClick={() => setVisualMode(mode.id)}
-                    disabled={cameraDisconnected}
+                    disabled={cameraDisconnected || isScanning}
                     className={`px-3 py-1 font-display text-[8px] uppercase tracking-widest font-extrabold rounded-sm transition-all ${
                       cameraDisconnected
                         ? "cursor-not-allowed text-slate-700 opacity-50"
