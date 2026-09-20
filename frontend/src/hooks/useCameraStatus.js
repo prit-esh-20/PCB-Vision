@@ -7,6 +7,7 @@ import { cameraApi } from "../services/api/cameraApi";
 export function useCameraStatus() {
   const [cameraStatus, setCameraStatus] = useState({
     status: "INITIALIZING",
+    connected: false,
     message: "Checking camera connection...",
   });
   const [loading, setLoading] = useState(true);
