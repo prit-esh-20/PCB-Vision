@@ -232,37 +232,22 @@ export default function HistoryPage() {
                   <span className="font-mono text-[8.5px] text-accent font-semibold">YOLO Bounding Box</span>
                 </div>
 
-                {/* Simulated frame rendering */}
+                {/* Inspection frame */}
                 <div className="relative h-64 bg-black/90 rounded border border-accent/5 my-3 flex items-center justify-center overflow-hidden">
-                  <div className="absolute inset-0 cyber-grid opacity-25" />
-                  
-                  {/* Procedural vector PCB schematics */}
-                  <svg className="w-4/5 h-4/5 text-accent/15" viewBox="0 0 300 200" fill="none">
-                    <rect x="10" y="10" width="280" height="180" rx="5" stroke="currentColor" strokeWidth="1" />
-                    <rect x="110" y="70" width="80" height="60" rx="2" stroke="currentColor" strokeWidth="1" />
-                    <circle cx="150" cy="100" r="20" stroke="currentColor" strokeWidth="1" />
-                  </svg>
-
-                  {/* Draw box overlays */}
-                  <div className="absolute border border-success/40 bg-success/5 rounded font-mono text-[7px] text-success/80 p-0.5" style={{ left: "37%", top: "35%", width: "27%", height: "30%" }}>
-                    <span>MAIN_IC: 99.8%</span>
-                  </div>
-
-                  {selectedRecord.defectCoordinates ? (
-                    <div 
-                      className="absolute border-2 border-danger bg-danger/10 rounded font-mono text-[8px] text-danger font-bold p-0.5 animate-pulse"
-                      style={{
-                        left: `${(selectedRecord.defectCoordinates.x / 400) * 100}%`,
-                        top: `${(selectedRecord.defectCoordinates.y / 300) * 100}%`,
-                        width: `${(selectedRecord.defectCoordinates.radius * 2 / 400) * 100}%`,
-                        height: `${(selectedRecord.defectCoordinates.radius * 2 / 300) * 100}%`,
-                      }}
-                    >
-                      <span>{selectedRecord.defect.toUpperCase()}</span>
-                    </div>
+                  {selectedRecord.imagePath ? (
+                    <img
+                      src={`${import.meta.env.VITE_API_BASE_URL.replace("/api", "")}/${selectedRecord.imagePath.replace(/\\/g, "/")}`}
+                      alt={`PCB inspection ${selectedRecord.id}`}
+                      className="h-full w-full object-contain"
+                    />
                   ) : (
-                    <div className="absolute border border-success/40 bg-success/5 rounded font-mono text-[7px] text-success/80 p-0.5" style={{ left: "68%", top: "62%", width: "15%", height: "20%" }}>
-                      <span>C12_CAP: 98%</span>
+                    <div className="flex flex-col items-center justify-center text-center px-4">
+                      <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">
+                        Inspection Image Unavailable
+                      </span>
+                      <span className="mt-2 font-mono text-[8px] text-slate-700">
+                        No stored image path for this inspection.
+                      </span>
                     </div>
                   )}
                 </div>
