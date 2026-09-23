@@ -1918,3 +1918,30 @@ def mark_notifications_read(
         "message": "Notifications marked as read"
     }
 
+@app.get("/api/settings")
+def get_system_settings():
+    return {
+        "yolo": {
+            "weights": "Pending trained model",
+            "confidenceThreshold": 0.50,
+            "iouThreshold": 0.45,
+        },
+        "camera": {
+            "videoNode": "Raspberry Pi Camera",
+            "targetFps": 30,
+        },
+        "gradCam": {
+            "targetLayer": "Pending trained model",
+            "overlayTransparency": 0.50,
+        },
+        "alerts": {
+            "warningAudio": False,
+            "autoArchiveFailures": True,
+        },
+        "hardware": {
+            "socModel": "Raspberry Pi",
+            "architecture": "ARM64",
+            "os": "Raspberry Pi OS",
+            "memory": "System dependent",
+        },
+    }
