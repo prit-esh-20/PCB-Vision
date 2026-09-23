@@ -37,6 +37,7 @@ export function normalizeInspectionRecord(record) {
     defect: record.defectClass ?? record.defect ?? "None",
     confidence: record.yoloConfidence ?? record.confidence,
     cycleTime: record.cycleTime,
+    imagePath: record.imagePath ?? null,
     operator: record.operator,
     componentsCount: record.componentsCount,
     defectCoordinates: record.defectCoordinates ?? null,
