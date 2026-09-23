@@ -2,7 +2,7 @@ import psutil
 import time
 import csv
 from io import StringIO
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -297,6 +297,278 @@ def get_inspection_history(
         "pages": pages,
         "page": page,
         "pageSize": pageSize,
+    }
+
+@app.get("/api/analytics")
+def get_analytics(db: Session = Depends(get_db)):
+    now = datetime.now(timezone.utc)
+
+    start_today = now.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    start_yesterday = start_today - timedelta(days=1)
+
+    start_7_days = start_today - timedelta(days=6)
+
+    # ---------------------------------------------------------
+    # Today's inspections
+    # ---------------------------------------------------------
+    today_inspections = (
+        db.query(Inspection)
+        .filter(Inspection.created_at >= start_today)
+        .all()
+    )
+
+    yesterday_inspections = (
+        db.query(Inspection)
+        .filter(
+            Inspection.created_at >= start_yesterday,
+            Inspection.created_at < start_today,
+        )
+        .all()
+    )
+
+    recent_inspections = (
+        db.query(Inspection)
+        .filter(Inspection.created_at >= start_7_days)
+        .all()
+    )
+
+    def calculate_yield(records):
+        if not records:
+            return 0.0
+
+        passed = sum(
+            1 for record in records
+            if str(record.status or "").upper() == "PASS"
+        )
+
+        return round((passed / len(records)) * 100, 1)
+
+    def calculate_average(records, field):
+        values = [
+            getattr(record, field)
+            for record in records
+            if getattr(record, field) is not None
+        ]
+
+        if not values:
+            return 0.0
+
+        return round(sum(values) / len(values), 2)
+
+    # ---------------------------------------------------------
+    # KPI calculations
+    # ---------------------------------------------------------
+    today_yield = calculate_yield(today_inspections)
+    yesterday_yield = calculate_yield(yesterday_inspections)
+
+    today_defects = sum(
+        1
+        for record in today_inspections
+        if str(record.status or "").upper() != "PASS"
+    )
+
+    yesterday_defects = sum(
+        1
+        for record in yesterday_inspections
+        if str(record.status or "").upper() != "PASS"
+    )
+
+    today_confidence = calculate_average(
+        today_inspections,
+        "confidence",
+    )
+
+    yesterday_confidence = calculate_average(
+        yesterday_inspections,
+        "confidence",
+    )
+
+    today_cycle_time = calculate_average(
+        today_inspections,
+        "inspection_time",
+    )
+
+    yesterday_cycle_time = calculate_average(
+        yesterday_inspections,
+        "inspection_time",
+    )
+
+    defect_change = 0.0
+    if yesterday_defects:
+        defect_change = round(
+            ((today_defects - yesterday_defects) / yesterday_defects) * 100,
+            1,
+        )
+
+    confidence_change = round(
+        today_confidence - yesterday_confidence,
+        1,
+    )
+
+    cycle_change = round(
+        today_cycle_time - yesterday_cycle_time,
+        2,
+    )
+
+    yield_change = round(
+        today_yield - yesterday_yield,
+        1,
+    )
+
+    # ---------------------------------------------------------
+    # Defect categories
+    # ---------------------------------------------------------
+    defect_counts = {}
+
+    for record in today_inspections:
+        defect = str(record.defect_class or "").strip()
+
+        if not defect or defect.lower() == "none":
+            continue
+
+        defect_counts[defect] = defect_counts.get(defect, 0) + 1
+
+    defect_chart = [
+        {
+            "name": name,
+            "count": count,
+        }
+        for name, count in sorted(
+            defect_counts.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+    ]
+
+    # ---------------------------------------------------------
+    # Hourly throughput
+    # ---------------------------------------------------------
+    hourly_throughput = []
+
+    for hour in range(24):
+        hour_records = [
+            record
+            for record in today_inspections
+            if record.created_at
+            and record.created_at.hour == hour
+        ]
+
+        if not hour_records:
+            continue
+
+        passed = sum(
+            1
+            for record in hour_records
+            if str(record.status or "").upper() == "PASS"
+        )
+
+        hourly_throughput.append({
+            "hour": f"{hour:02d}:00",
+            "inspected": len(hour_records),
+            "pass": passed,
+            "fail": len(hour_records) - passed,
+        })
+
+    # ---------------------------------------------------------
+    # Seven-day trend
+    # ---------------------------------------------------------
+    trend_7_days = []
+
+    for offset in range(6, -1, -1):
+        day_start = start_today - timedelta(days=offset)
+        day_end = day_start + timedelta(days=1)
+
+        day_records = [
+            record
+            for record in recent_inspections
+            if record.created_at
+            and day_start <= record.created_at < day_end
+        ]
+
+        trend_7_days.append({
+            "day": day_start.strftime("%a"),
+            "passRate": calculate_yield(day_records),
+            "avgTime": calculate_average(
+                day_records,
+                "inspection_time",
+            ),
+        })
+
+    # ---------------------------------------------------------
+    # Response
+    # ---------------------------------------------------------
+    return {
+        "kpis": [
+            {
+                "label": "Yield Rate",
+                "value": today_yield,
+                "suffix": "%",
+                "decimals": 1,
+                "trend": f"{yield_change:+.1f}%",
+                "up": yield_change >= 0,
+            },
+            {
+                "label": "Today's Defects",
+                "value": today_defects,
+                "suffix": "",
+                "decimals": 0,
+                "trend": f"{defect_change:+.1f}%",
+                "up": defect_change <= 0,
+            },
+            {
+                "label": "Avg Confidence",
+                "value": today_confidence,
+                "suffix": "%",
+                "decimals": 1,
+                "trend": f"{confidence_change:+.1f}%",
+                "up": confidence_change >= 0,
+            },
+            {
+                "label": "Inspection Time",
+                "value": today_cycle_time,
+                "suffix": "s",
+                "decimals": 2,
+                "trend": f"{cycle_change:+.2f}s",
+                "up": cycle_change <= 0,
+            },
+        ],
+        "qualitySummary": [
+            {
+                "name": "PASS RATE",
+                "value": today_yield,
+                "color": "#00FF9C",
+            },
+            {
+                "name": "DEFECT RATE",
+                "value": round(100 - today_yield, 1),
+                "color": "#FF4D6D",
+            },
+        ],
+        "donutStats": [
+            {
+                "label": "Today's Target",
+                "value": 95.0,
+            },
+            {
+                "label": "Yesterday's Yield",
+                "value": yesterday_yield,
+            },
+            {
+                "label": "Daily Improvement",
+                "value": abs(yield_change),
+                "up": yield_change >= 0,
+            },
+        ],
+        "yieldRate": today_yield,
+        "defectChart": defect_chart,
+        "hourlyThroughput": hourly_throughput,
+        "trend7Days": trend_7_days,
     }
 
 @app.get("/api/reports")
