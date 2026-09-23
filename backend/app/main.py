@@ -1424,6 +1424,7 @@ def get_inspection_history_details(
         "defectClass": inspection.defect_class,
         "yoloConfidence": inspection.confidence,
         "cycleTime": inspection.inspection_time,
+        "imagePath": inspection.image_path,
         "operator": None,
         "componentsCount": None,
         "defectCoordinates": None,
