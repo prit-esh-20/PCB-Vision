@@ -770,12 +770,12 @@ const xaiVisualUrl = null;
                     )
                   ) : (
                     <>
-                      {/* Empty state — waiting for a PCB image / inspection */}
+                      {/* Empty state — ready for inspection */}
                       {!scanning && !inspection && !uploadedImage && (
                         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2">
-                          <span className="font-mono text-[11px] tracking-[0.3em] text-slate-400 uppercase font-bold">Waiting for inspection</span>
+                          <span className="font-mono text-[11px] tracking-[0.3em] text-slate-400 uppercase font-bold">Ready for inspection</span>
                           <span className="font-mono text-[9px] text-slate-600">
-                            {"Upload a PCB image and press Start Inspection to begin."}
+                            Start an inspection to capture and analyze a PCB.
                           </span>
                         </div>
                       )}
