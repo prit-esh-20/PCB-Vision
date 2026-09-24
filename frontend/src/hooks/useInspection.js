@@ -28,16 +28,6 @@ export const SCAN_PHASE = {
   COMPLETE: "complete",
 };
 
-// The Live Inspection page is camera-fed: it always has a PCB frame to
-// inspect (its schematic viewport stands in for the live camera feed). The
-// Dashboard only ever inspects a real uploaded image — it sets pcbImage
-// itself and never uses this placeholder.
-export const LIVE_CAMERA_FEED = Object.freeze({
-  url: null,
-  uploadId: null,
-  name: "Live Camera Feed",
-});
-
 // Single, sequential scan timeline. Horizontal and vertical never overlap:
 //   horizontal: progress 0%  → 50%
 //   vertical:   progress 50% → 100%

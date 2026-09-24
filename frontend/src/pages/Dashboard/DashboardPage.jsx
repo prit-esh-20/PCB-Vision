@@ -7,7 +7,7 @@ import StatusBadge from "../../components/common/StatusBadge";
 import { useAuth } from "../../context/AuthContext";
 import { useNotifications } from "../../context/NotificationContext";
 import { useDashboard } from "../../hooks/useDashboard";
-import { useInspection, INSPECTION_STATE } from "../../hooks/useInspection";
+import { useInspection } from "../../hooks/useInspection";
 import { useUpload } from "../../hooks/useUpload";
 import ScanningOverlay from "../../components/animations/ScanningOverlay";
 import { useReport } from "../../hooks/useReport";
@@ -21,10 +21,11 @@ import {
   AreaChart, Area, ResponsiveContainer,
 } from "recharts";
 import {
-  Play, Camera, Loader2, RefreshCw,
+  Play, Camera, Loader2,
   AlertTriangle, CheckCircle, Clock, Bell, Upload, FileText, Download, Image,
   Search, ChevronDown, Settings, LogOut, User, X,
   Scan, Layers, GitBranch, Info, Sparkles,
+  Wrench,
 } from "lucide-react";
 
 const containerVariants = {
@@ -72,13 +73,10 @@ export default function DashboardPage() {
   const {
     pcbImage,
     inspection,
-    state: inspectionState,
-    errorMessage: inspectionError,
     scanPhase,
+    errorMessage: inspectionError,
     setPcbImage,
     clearPcbImage,
-    runInspection,
-    refreshInspection,
     resetInspection,
   } = useInspection();
 
@@ -105,9 +103,6 @@ export default function DashboardPage() {
   } = useSnapshot();
 
   const {
-    gradCam,
-    loading: gradCamLoading,
-    requestGradCam,
     clear: clearXai,
   } = useXAI();
 
@@ -119,7 +114,6 @@ export default function DashboardPage() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [summaryView, setSummaryView] = useState(false);
-  const [showGradCam, setShowGradCam] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [actionStatus, setActionStatus] = useState(null);
   const notifRef = useRef(null);
@@ -154,10 +148,9 @@ export default function DashboardPage() {
     return () => document.removeEventListener("keydown", handleKey);
   }, []);
 
-  // Clear Grad-CAM data whenever the active inspection changes.
+  // Clear XAI data whenever the active inspection changes.
   useEffect(() => {
     clearXai();
-    setShowGradCam(false);
   }, [inspection?.inspectionId, clearXai]);
 
   // Reset measured dimensions whenever a new image is uploaded.
@@ -175,7 +168,7 @@ export default function DashboardPage() {
   const imageAspect = imageDims ? `${imageDims.width} / ${imageDims.height}` : "600 / 400";
 
   // Scan is active only during the two sequential AOI sweep phases; both the
-  // Dashboard viewport and the Live Inspection page share this same state.
+  // Dashboard viewport and the PCB Inspection page share this same state.
   const scanning = scanPhase === "horizontal" || scanPhase === "vertical";
 
   const formatTime = (d) => d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -189,29 +182,9 @@ export default function DashboardPage() {
   };
 
   // ---- Action handlers ----------------------------------------------------
-  const handleStartInspection = useCallback(async () => {
-    if (scanning || inspectionState === INSPECTION_STATE.STARTING || inspectionState === INSPECTION_STATE.INSPECTING) return;
-    // Inspection requires a PCB image — without one, nothing may start.
-    if (!uploadedImage) {
-      setActionStatus({ type: "error", text: "Upload a PCB image before starting inspection." });
-      notify({ type: "error", title: "No PCB image available.", message: "Upload a PCB image before starting inspection." });
-      return;
-    }
-    setActionStatus(null);
-    const payload = uploadedImage?.uploadId ? { uploadId: uploadedImage.uploadId } : undefined;
-    const result = await runInspection(payload);
-    if (!result.ok) {
-      notify({ type: "error", title: "Unable to start inspection.", message: result.message });
-      setActionStatus({ type: "error", text: result.message });
-    }
-  }, [scanning, inspectionState, uploadedImage, runInspection, notify]);
-
-  const handleFetchResult = useCallback(async () => {
-    const result = await refreshInspection();
-    if (!result.ok) {
-      notify({ type: "error", title: "Unable to load inspection result.", message: result.message });
-    }
-  }, [refreshInspection, notify]);
+  // Note: inspections are started from the PCB Inspection page. The Dashboard
+  // is a monitoring/overview surface — it never drives the inspection
+  // lifecycle itself.
 
   const handleFileSelected = useCallback(
     async (e) => {
@@ -311,18 +284,6 @@ export default function DashboardPage() {
     });
   }, [captureSnapshot, inspection, notify]);
 
-  const handleGradCamToggle = useCallback(() => {
-    if (showGradCam) {
-      setShowGradCam(false);
-      return;
-    }
-
-    notify({
-      type: "info",
-      title: "Grad-CAM unavailable",
-      message: "Grad-CAM will be available once the trained ML model and XAI pipeline are connected.",
-    });
-  }, [showGradCam, notify]);
 
   // ---- Derived inspection metrics ------------------------------------------
   const presenceFailures = inspection?.verificationDetails?.presence?.filter((p) => p.status === "FAIL").length || 0;
@@ -382,25 +343,11 @@ const xaiFix = isMlPending
 const xaiVisualUrl = null;
   const cameraBadge = CAMERA_BADGE[cameraStatus.status] || CAMERA_BADGE.UNKNOWN;
 
-  // Bottom status bar presentation per inspection lifecycle state.
-  const hudStatus = {
-    [INSPECTION_STATE.READY]: { text: "READY", cls: "text-slate-400" },
-    [INSPECTION_STATE.STARTING]: { text: "INSPECTING", cls: "text-warning" },
-    [INSPECTION_STATE.INSPECTING]: { text: "INSPECTING", cls: "text-warning" },
-    [INSPECTION_STATE.ERROR]: { text: "INSPECTION ERROR", cls: "text-danger" },
-  }[inspectionState];
-
-  // Button presentation states — while the scan animation is running the
-  // button always reads "Inspecting...", regardless of the backend ack time.
-  const inspectionButton = scanning
-    ? { label: "Inspecting...", icon: RefreshCw, loading: true, disabled: true }
-    : {
-        [INSPECTION_STATE.READY]: { label: "Start Inspection", icon: Play, loading: false, disabled: false },
-        [INSPECTION_STATE.STARTING]: { label: "Starting...", icon: Loader2, loading: true, disabled: true },
-        [INSPECTION_STATE.INSPECTING]: { label: "Inspecting...", icon: RefreshCw, loading: true, disabled: false },
-        [INSPECTION_STATE.COMPLETED]: { label: "Start New Inspection", icon: Play, loading: false, disabled: false },
-        [INSPECTION_STATE.ERROR]: { label: "Retry Inspection", icon: Play, loading: false, disabled: false },
-      }[inspectionState];
+  // Bottom status bar reflects the shared inspection lifecycle (driven from
+  // the PCB Inspection page): either a result exists or the system is ready.
+  const hudStatus = inspection
+    ? null
+    : { text: "READY", cls: "text-slate-400" };
 
   return (
     <AppLayout>
@@ -548,7 +495,7 @@ const xaiVisualUrl = null;
                 </div>
                 <div className="flex items-center gap-3 mt-1">
                   {[
-                    { label: "FPS", value: stats ? stats.today.fps : "—", color: "text-accent" },
+                    { label: "CAMERA", value: cameraBadge.label.replace("Camera ", ""), color: cameraStatus.connected ? "text-success" : "text-danger" },
                     { label: "CPU", value: stats ? stats.today.cpu : "—", color: "text-accent" },
                     { label: "TEMP", value: stats ? stats.today.rpiTemp : "—", color: "text-warning" },
                   ].map((m) => (
@@ -565,23 +512,18 @@ const xaiVisualUrl = null;
           {/* ---- QUICK ACTIONS ---- */}
           <motion.div variants={itemVariants} className="space-y-2">
             <div className="flex flex-wrap items-center gap-3">
-              {/* START INSPECTION */}
+              {/* START INSPECTION — navigates to the PCB Inspection page */}
               <motion.button
-                whileHover={inspectionButton.disabled ? undefined : { scale: 1.03, y: -2 }}
-                whileTap={inspectionButton.disabled ? undefined : { scale: 0.97 }}
-                onClick={inspectionState === INSPECTION_STATE.INSPECTING ? handleFetchResult : handleStartInspection}
-                disabled={inspectionButton.disabled}
-                className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest shadow-lg transition-all duration-300 ${
-                  inspectionButton.disabled
-                    ? "cursor-not-allowed bg-accent/40 text-primary-bg/70"
-                    : "bg-accent text-primary-bg hover:shadow-[0_0_30px_rgba(50,213,131,0.25)]"
-                }`}
+                whileHover={{ scale: 1.03, y: -2 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => navigate("/inspection")}
+                className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-primary-bg shadow-lg transition-all duration-300 hover:shadow-[0_0_30px_rgba(50,213,131,0.25)]"
               >
-                <inspectionButton.icon className={`h-3.5 w-3.5 ${inspectionButton.loading ? "animate-spin" : ""}`} />
-                {inspectionButton.label}
+                <Play className="h-3.5 w-3.5" />
+                Start Inspection
               </motion.button>
 
-              {/* UPLOAD PCB IMAGE */}
+              {/* TEST WITH PCB IMAGE — secondary/testing path via the existing local upload */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -601,7 +543,7 @@ const xaiVisualUrl = null;
                 }`}
               >
                 {uploadLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />}
-                {uploadLoading ? "Uploading..." : "Upload PCB Image"}
+                {uploadLoading ? "Uploading..." : "Test with PCB Image"}
               </motion.button>
 
               {/* DISCARD UPLOADED IMAGE */}
@@ -616,6 +558,15 @@ const xaiVisualUrl = null;
                   Discard Image
                 </motion.button>
               )}
+
+            </div>
+
+            {/* Secondary utility actions */}
+            <div className="flex flex-wrap items-center gap-3 border-t border-accent/5 pt-3">
+              <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest text-slate-600">
+                <Wrench className="h-3 w-3" />
+                Utilities
+              </span>
 
               {/* GENERATE REPORT */}
               <motion.button
@@ -731,31 +682,17 @@ const xaiVisualUrl = null;
           {/* ---- INSPECTION GRID: LIVE VIEWPORT + XAI ANALYSIS ---- */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[65fr_35fr] items-start">
 
-            {/* ---- LEFT: LIVE INSPECTION VIEWPORT ---- */}
+            {/* ---- LEFT: INSPECTION STATUS ---- */}
             <motion.div variants={itemVariants} className="space-y-4">
               <GlassCard className="flex flex-col" hoverLift={false}>
                 {/* Camera header */}
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-accent/5 pb-3">
                   <div className="flex items-center gap-2">
                     <Camera className="h-4 w-4 text-accent" />
-                    <span className="font-display text-[10px] font-bold uppercase tracking-widest text-slate-400">Live Inspection Viewport</span>
+                    <span className="font-display text-[10px] font-bold uppercase tracking-widest text-slate-400">Inspection Status</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/* Grad-CAM control */}
-                    <button
-                      onClick={handleGradCamToggle}
-                      disabled={gradCamLoading}
-                      className={`rounded-md px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider transition-all ${
-                        gradCamLoading
-                          ? "cursor-not-allowed text-slate-600"
-                          : showGradCam
-                            ? "bg-accent/15 text-accent border border-accent/30"
-                            : "text-slate-500 border border-transparent hover:text-slate-300"
-                      }`}
-                    >
-                      {gradCamLoading ? "Loading..." : showGradCam ? "Grad-CAM ON" : "Grad-CAM"}
-                    </button>
-                    {/* Summary control — switches viewport between live view and summary */}
+                    {/* Summary control — switches the panel between status view and summary */}
                     <button
                       onClick={() => setSummaryView(!summaryView)}
                       disabled={!inspection}
@@ -785,11 +722,11 @@ const xaiVisualUrl = null;
 
                   {/* Camera HUD - Top left */}
                   <div className="absolute left-3 top-3 z-20 flex items-center gap-3 rounded-lg bg-black/70 border border-accent/10 px-2.5 py-1.5 font-mono text-[9px] backdrop-blur-sm">
-                    <span className="flex items-center gap-1.5 text-success">
+                    <span className={`flex items-center gap-1.5 ${cameraStatus.connected ? "text-success" : "text-danger"}`}>
                       <span className={`h-1.5 w-1.5 rounded-full ${cameraBadge.dot}`} />
-                      CAM 01
+                      INSPECTION CAM
                     </span>
-                    <span className="text-accent">{stats ? `${stats.today.fps} FPS` : "—"}</span>
+                    <span className="text-accent">{cameraBadge.label.toUpperCase()}</span>
                   </div>
 
                   {/* Summary view — switches the viewport content */}
@@ -838,9 +775,7 @@ const xaiVisualUrl = null;
                         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2">
                           <span className="font-mono text-[11px] tracking-[0.3em] text-slate-400 uppercase font-bold">Waiting for inspection</span>
                           <span className="font-mono text-[9px] text-slate-600">
-                            {inspectionState === INSPECTION_STATE.ERROR
-                              ? inspectionError
-                              : "Upload a PCB image and press Start Inspection to begin."}
+                            {"Upload a PCB image and press Start Inspection to begin."}
                           </span>
                         </div>
                       )}
@@ -854,23 +789,15 @@ const xaiVisualUrl = null;
                         </div>
                       )}
 
-                      {/* Inspection state overlay — hidden while the scan
-                          animation is running so the PCB frame stays visible */}
-                      {(inspectionState === INSPECTION_STATE.STARTING || inspectionState === INSPECTION_STATE.INSPECTING) && !scanning && (
-                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/60 backdrop-blur-sm">
-                          <Loader2 className="h-6 w-6 animate-spin text-accent" />
-                          <span className="font-mono text-[10px] tracking-[0.3em] text-accent uppercase font-bold">
-                            {inspectionState === INSPECTION_STATE.STARTING ? "Starting inspection..." : "Inspecting..."}
-                          </span>
-                        </div>
-                      )}
+                      {/* Inspection execution is driven from the PCB Inspection page —
+                          the Dashboard only displays state and results. */}
 
-                      {/* Inspection error overlay */}
-                      {inspectionState === INSPECTION_STATE.ERROR && (
+                      {/* Inspection error overlay — reflects the shared inspection store */}
+                      {!scanning && inspectionError && (
                         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/70 backdrop-blur-sm">
                           <AlertTriangle className="h-6 w-6 text-danger" />
-                          <span className="font-mono text-[10px] tracking-[0.3em] text-danger uppercase font-bold">Inspection Failed</span>
-                          <span className="max-w-[60%] text-center font-mono text-[9px] text-slate-400">{inspectionError || "Unable to start inspection."}</span>
+                          <span className="font-mono text-[10px] tracking-[0.3em] text-danger uppercase font-bold">Inspection Error</span>
+                          <span className="max-w-[60%] text-center font-mono text-[9px] text-slate-400">Run a new inspection from the PCB Inspection page.</span>
                         </div>
                       )}
 
@@ -931,14 +858,9 @@ const xaiVisualUrl = null;
                               </div>
                             ) : (
                               <>
-                                {/* Grad-CAM overlay — only rendered from real backend heatmap data */}
-                                {showGradCam && gradCam?.heatmapUrl && (
-                                  <img
-                                    src={gradCam.heatmapUrl}
-                                    alt="Grad-CAM heatmap"
-                                    className="pointer-events-none absolute inset-0 z-10 h-full w-full object-contain opacity-60"
-                                  />
-                                )}
+                                {/* Grad-CAM overlay — deferred until the trained ML model
+                                    and XAI pipeline are connected. Only real backend
+                                    heatmap data will ever render here. */}
 
                                 {/* YOLO detection boxes — only when the backend returned real detections */}
                                 <AnimatePresence>
@@ -966,7 +888,7 @@ const xaiVisualUrl = null;
                             )}
 
                             {/* Sequential AOI scan animation — same shared component and state as the
-                                Live Inspection page. Rendered only while a PCB
+                                PCB Inspection page. Rendered only while a PCB
                                 image exists AND a scan is actually running. */}
                             {scanning && pcbImage && <ScanningOverlay phase={scanPhase} />}
                           </div>
@@ -1147,9 +1069,7 @@ const xaiVisualUrl = null;
                               <img src={xaiVisualUrl} alt="XAI visualization" className="absolute inset-0 h-full w-full object-contain opacity-60" />
                             ) : (
                               <span className="absolute inset-0 flex items-center justify-center px-4 text-center font-mono text-[9px] text-slate-600">
-                                {gradCam
-                                  ? (gradCam.message || "XAI visualization unavailable from the backend.")
-                                  : "Request Grad-CAM from the viewport control to load the heatmap overlay."}
+                                "Awaiting trained ML model and XAI pipeline."
                               </span>
                             )}
                           </div>

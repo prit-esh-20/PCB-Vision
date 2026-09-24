@@ -16,7 +16,7 @@ import { useAuth } from "../../context/AuthContext";
 
 const navItems = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard, badge: null },
-  { name: "Live Inspection", path: "/inspection", icon: Camera, badge: null },
+  { name: "PCB Inspection", path: "/inspection", icon: Camera, badge: null },
   { name: "History Logs", path: "/history", icon: History, badge: 12 },
   { name: "Quality Reports", path: "/reports", icon: FileText, badge: 3 },
   { name: "Analytics", path: "/analytics", icon: LineChart, badge: "NEW" },
