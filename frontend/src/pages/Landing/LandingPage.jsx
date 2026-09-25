@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Cpu,
@@ -11,7 +10,6 @@ import {
   Camera,
   Database,
   Layers,
-  GitBranch,
   Box,
   Lightbulb,
   Microchip,
@@ -19,12 +17,8 @@ import {
   Image,
   Zap,
   MessageSquare,
-  ExternalLink,
   Mail,
-  ArrowRight,
   MapPin,
-  Send,
-  Clock,
   Building2,
 } from "lucide-react";
 import HeroPanel from "../../components/hero/HeroPanel";
@@ -89,7 +83,6 @@ const workflowSteps = [
 ];
 
 
-
 function SectionLabel({ children }) {
   return (
     <div className="text-[10px] uppercase tracking-[0.28em] text-accent font-medium">
@@ -107,7 +100,6 @@ function SectionTitle({ children, className = "" }) {
 }
 
 function CardCircuit({ className = "" }) {
-  // Subtle PCB traces + AI nodes decorating the showcase cards.
   return (
     <svg
       viewBox="0 0 220 140"
@@ -135,22 +127,22 @@ export default function LandingPage() {
       <HeroPanel />
 
       {/* KPI SECTION */}
-      <section className="mx-auto max-w-7xl px-4 pb-10 md:px-8 lg:px-10">
+      <section className="mx-auto max-w-7xl px-4 py-10 md:px-8 lg:px-10">
         <GlassMetricCards />
       </section>
 
       {/* ABOUT SECTION */}
       <section
         id="about"
-        className="mx-auto max-w-7xl px-4 py-14 md:px-8 lg:px-10"
+        className="mx-auto max-w-7xl px-4 py-10 md:px-8 lg:px-10"
       >
-        <div className="grid gap-14 lg:grid-cols-[1fr_1fr] lg:items-center">
+        <div className="grid gap-10 lg:grid-cols-[1fr_1fr] lg:items-center">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="space-y-6"
+            className="space-y-5"
           >
             <SectionLabel>About</SectionLabel>
             <SectionTitle>
@@ -171,7 +163,7 @@ export default function LandingPage() {
             viewport={{ once: true, amount: 0.2 }}
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="rounded-2xl border border-accent/10 bg-[rgba(13,27,23,0.72)] p-8 shadow-[0_18px_70px_rgba(0,0,0,0.25)] backdrop-blur-xl space-y-6">
+            <div className="rounded-2xl border border-accent/10 bg-[rgba(13,27,23,0.72)] p-6 shadow-[0_18px_70px_rgba(0,0,0,0.25)] backdrop-blur-xl space-y-5">
               <div>
                 <h3 className="font-display text-sm uppercase tracking-[0.25em] text-white mb-2">
                   What it solves
@@ -197,24 +189,24 @@ export default function LandingPage() {
       {/* FEATURES SECTION — premium product showcase */}
       <section
         id="features"
-        className="mx-auto max-w-7xl px-4 py-14 md:px-8 lg:px-10"
+        className="mx-auto max-w-7xl px-4 py-10 md:px-8 lg:px-10"
       >
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.2 }}
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="mx-auto mb-12 max-w-6xl text-center"
+          className="mx-auto mb-8 max-w-6xl text-center"
         >
           <SectionLabel>Why PCBVision?</SectionLabel>
-          <h2 className="mt-4 font-display text-2xl font-semibold leading-tight text-white sm:text-3xl lg:text-[1.75rem] xl:text-4xl">
+          <h2 className="mt-3 font-display text-2xl font-semibold leading-tight text-white sm:text-3xl lg:text-[1.75rem] xl:text-4xl">
             Intelligent Inspection.{" "}
             <span className="bg-gradient-to-r from-accent via-[#7ce7ac] to-accent bg-clip-text text-transparent">
               Explainable Decisions.
             </span>{" "}
             Industrial Reliability.
           </h2>
-          <p className="mx-auto mt-4 max-w-[560px] text-base leading-[1.6] text-slate-400 sm:text-lg">
+          <p className="mx-auto mt-3 max-w-[560px] text-base leading-[1.6] text-slate-400 sm:text-lg">
             One platform that captures, detects, explains, and verifies every
             board on the line.
           </p>
@@ -239,10 +231,10 @@ export default function LandingPage() {
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/20 bg-accent/10 text-accent shadow-[0_0_30px_rgba(50,213,131,0.1)] transition-transform duration-500 group-hover:rotate-3 group-hover:scale-110">
                     <Icon className="h-7 w-7" />
                   </div>
-                  <h3 className="mt-5 font-display text-xl font-semibold text-white">
+                  <h3 className="mt-4 font-display text-xl font-semibold text-white">
                     {card.title}
                   </h3>
-                  <p className="mt-3 text-sm leading-[1.6] text-slate-400">
+                  <p className="mt-2.5 text-sm leading-[1.6] text-slate-400">
                     {card.copy}
                   </p>
                   <ul className="mt-auto w-full space-y-2.5 border-t border-accent/10 pt-5">
@@ -278,7 +270,7 @@ export default function LandingPage() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.2 }}
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="mb-8"
+          className="mb-6"
         >
           <SectionLabel>Technology</SectionLabel>
           <SectionTitle className="mt-2">Technology Stack</SectionTitle>
@@ -293,14 +285,14 @@ export default function LandingPage() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.2 }}
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="mb-6 flex flex-wrap items-center gap-4 rounded-xl border border-accent/10 bg-[rgba(13,27,23,0.6)] px-4 py-2.5 backdrop-blur-md"
+          className="mb-5 flex flex-wrap items-center gap-4 rounded-xl border border-accent/10 bg-[rgba(13,27,23,0.6)] px-4 py-2.5 backdrop-blur-md"
         >
           {[
             { icon: Layers, label: "8 Technologies" },
             { icon: ShieldCheck, label: "100% Open Source" },
             { icon: Cpu, label: "Edge Optimized" },
             { icon: CheckCircle2, label: "Production Ready" },
-          ].map((stat, i) => {
+          ].map((stat, _i) => {
             const StatIcon = stat.icon;
             return (
               <div key={stat.label} className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-slate-400">
@@ -395,16 +387,16 @@ export default function LandingPage() {
       {/* WORKFLOW SECTION */}
       <section
         id="workflow"
-        className="mx-auto max-w-7xl px-4 py-14 md:px-8 lg:px-10"
+        className="mx-auto max-w-7xl px-4 py-10 md:px-8 lg:px-10"
       >
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.2 }}
           transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
-          className="rounded-[1.75rem] border border-accent/10 bg-[rgba(13,27,23,0.8)] px-6 py-12 shadow-[0_18px_70px_rgba(0,0,0,0.25)] backdrop-blur-xl md:px-10 lg:py-14"
+          className="rounded-[1.75rem] border border-accent/10 bg-[rgba(13,27,23,0.8)] px-6 py-10 shadow-[0_18px_70px_rgba(0,0,0,0.25)] backdrop-blur-xl md:px-10 lg:py-12"
         >
-          <div className="mb-12 text-center">
+          <div className="mb-10 text-center">
             <SectionLabel>Workflow</SectionLabel>
             <SectionTitle className="mt-2">A disciplined path from capture to decision.</SectionTitle>
           </div>
@@ -460,23 +452,23 @@ export default function LandingPage() {
       {/* CONTACT SECTION — Enterprise Inquiry */}
       <section
         id="contact"
-        className="mx-auto max-w-7xl px-4 py-12 md:px-8 lg:px-10"
+        className="mx-auto max-w-7xl px-4 py-10 md:px-8 lg:px-10"
       >
-        <div className="grid gap-10 lg:grid-cols-[1fr_1.2fr] lg:items-start">
+        <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr] lg:items-start">
           {/* LEFT COLUMN — Info */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="flex flex-col space-y-6"
+            className="flex flex-col space-y-5"
           >
             <div>
               <SectionLabel>Get In Touch</SectionLabel>
               <SectionTitle className="mt-3 leading-tight">
                 Let's Build Smarter PCB Inspection Together
               </SectionTitle>
-              <p className="mt-5 max-w-lg text-base leading-relaxed text-slate-400">
+              <p className="mt-4 max-w-lg text-base leading-relaxed text-slate-400">
                 Interested in Explainable AI for PCB inspection? Contact our research team to discuss the project, implementation, technical details, or collaboration opportunities.
               </p>
             </div>
@@ -487,7 +479,7 @@ export default function LandingPage() {
                 { icon: Mail, label: "Email", value: "team.pcbvision@gmail.com", href: "mailto:team.pcbvision@gmail.com" },
                 { icon: Building2, label: "Institution", value: "SIES Graduate School of Technology" },
                 { icon: MapPin, label: "Location", value: "Mumbai, Maharashtra, India" },
-                { icon: Lightbulb, label: "Research Area", value: "Embedded AI \u00B7 Computer Vision \u00B7 Explainable AI" },
+                { icon: Lightbulb, label: "Research Area", value: "Embedded AI · Computer Vision · Explainable AI" },
               ].map((item, i) => {
                 const ItemIcon = item.icon;
                 return (
@@ -530,9 +522,9 @@ export default function LandingPage() {
       </section>
 
       {/* TRUST INDICATOR BADGES */}
-      <section className="mx-auto max-w-7xl px-4 pt-4 pb-6 md:px-8 lg:px-10">
+      <section className="mx-auto max-w-7xl px-4 py-8 md:px-8 lg:px-10">
         {/* Subtle separator */}
-        <div className="w-full h-px mb-6 bg-gradient-to-r from-transparent via-accent/8 to-transparent" />
+        <div className="w-full h-px mb-5 bg-gradient-to-r from-transparent via-accent/8 to-transparent" />
 
         {/* Badges row */}
         <motion.div
@@ -540,7 +532,7 @@ export default function LandingPage() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="flex flex-wrap justify-center gap-5"
+          className="flex flex-wrap justify-center gap-4"
         >
           {[
             { icon: Sparkles, label: "Explainable AI" },

@@ -78,7 +78,10 @@ export const inspectionApi = {
 
     const { data } = await apiClient.post(
       "/inspection/run",
-      payload ?? {}
+      payload ?? {},
+      // ML inference (YOLO11s on Raspberry Pi) can take 15-45 s.
+      // Override the global 10 s default for this request only.
+      { timeout: 60_000 }
     );
 
     return normalizeInspection(data);

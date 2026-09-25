@@ -50,10 +50,10 @@ export default function HeroPanel() {
   };
 
   return (
-    <section
-      id="home"
-      className="relative mx-auto flex min-h-[calc(85vh-6rem)] w-full max-w-7xl flex-col items-center justify-center px-4 pb-28 pt-12 md:px-8 lg:px-10"
-    >
+<section
+        id="home"
+        className="relative mx-auto flex min-h-[calc(75vh-6rem)] w-full max-w-7xl flex-col items-center justify-center px-4 pb-16 pt-10 md:px-8 lg:px-10"
+      >
       {/* Soft radial spotlight */}
       <div
         aria-hidden="true"

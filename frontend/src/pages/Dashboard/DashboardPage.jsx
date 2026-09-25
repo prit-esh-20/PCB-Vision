@@ -848,15 +848,12 @@ const xaiVisualUrl = null;
                         </div>
                       )}
 
-                      {/* Inspection execution is driven from the PCB Inspection page —
-                          the Dashboard only displays state and results. */}
-
                       {/* Inspection error overlay — reflects the shared inspection store */}
                       {!scanning && inspectionError && (
                         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/70 backdrop-blur-sm">
                           <AlertTriangle className="h-6 w-6 text-danger" />
                           <span className="font-mono text-[10px] tracking-[0.3em] text-danger uppercase font-bold">Inspection Error</span>
-                          <span className="max-w-[60%] text-center font-mono text-[9px] text-slate-400">Run a new inspection from the PCB Inspection page.</span>
+                          <span className="max-w-[60%] text-center font-mono text-[9px] text-slate-400">Press Start Inspection to retry local image analysis.</span>
                         </div>
                       )}
 

@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Search, ExternalLink } from "lucide-react";
+import { Search } from "lucide-react";
 import { scrollToSection } from "../../hooks/useSmoothScroll";
 
 const footerLinks = [
@@ -20,9 +19,9 @@ export default function Footer() {
 
   return (
     <footer className="relative border-t border-accent/[0.06] bg-[rgba(5,12,10,0.92)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 py-6 md:flex-row md:px-8 lg:px-10">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-4 py-8 md:flex-row md:px-8 lg:px-10">
         {/* Left — Brand */}
-        <div className="flex flex-col items-center gap-1.5 md:items-start">
+        <div className="flex flex-col items-center gap-2 md:items-start text-center md:text-left">
           <Link to="/" className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-full border border-accent/25 bg-gradient-to-br from-[#00ff88] to-[#00e573]">
               <Search className="h-3.5 w-3.5 text-[#07110F]" />
@@ -35,16 +34,15 @@ export default function Footer() {
           <span className="text-[10px] text-slate-500 tracking-wide">
             Explainable PCB Inspection Platform
           </span>
-          <span className="text-[9px] text-slate-600 mt-1">
-            &copy; 2026 PCBVision
-          </span>
-          <span className="text-[9px] text-slate-600">
-            Built using React &bull; FastAPI &bull; YOLOv8 &bull; Raspberry Pi
-          </span>
+          <div className="flex flex-wrap items-center justify-center gap-3 text-[9px] text-slate-600 mt-2 md:justify-start">
+            <span>&copy; 2026 PCBVision</span>
+            <span className="mx-1">•</span>
+            <span>Built using React · FastAPI · YOLOv8 · Raspberry Pi</span>
+          </div>
         </div>
 
         {/* Right — Nav */}
-        <div className="flex items-center gap-5">
+        <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6">
           {footerLinks.map((link) => {
             if (link.external) {
               return (

@@ -11,7 +11,15 @@ export const toErrorMessage = (err, fallback) => {
 
   if (dataMessage) return String(dataMessage);
 
-  if (err?.code === "ECONNABORTED") return "Request timed out. Backend connection unavailable.";
+  // ECONNABORTED = Axios timeout. For the inspection run endpoint the backend
+  // may have finished after the client gave up — don't claim unavailability.
+  if (err?.code === "ECONNABORTED") {
+    const url = err?.config?.url ?? "";
+    if (url.includes("/inspection/run")) {
+      return "Inspection is taking longer than expected. Check the Dashboard — the result may already be available.";
+    }
+    return "Request timed out. Please try again.";
+  }
 
   const raw = err?.message || "";
   if (/network|connect|socket/i.test(raw)) {
