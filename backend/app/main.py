@@ -1772,7 +1772,11 @@ def get_dashboard_stats(
             if str(inspection.status).upper() == "FAIL"
         )
 
-        inspected = passed + failed
+        inspected = sum(
+    1
+            for inspection in inspections
+            if inspection.inspection_time is not None
+        )
 
         pass_rate = (
             round((passed / inspected) * 100, 1)
@@ -1923,7 +1927,34 @@ def run_inspection(
     db.commit()
     db.refresh(inspection)
 
-    return inspection
+    return {
+        "id": inspection.id,
+        "model_name": inspection.model_name,
+        "status": inspection.status,
+        "defect_class": inspection.defect_class,
+        "xai_explanation": inspection.xai_explanation,
+        "board_id": inspection.board_id,
+        "image_name": inspection.image_name,
+        "image_path": inspection.image_path,
+        "confidence": inspection.confidence,
+        "inspection_time": inspection.inspection_time,
+        "created_at": inspection.created_at,
+        "detections": [
+            {
+                "class_id": None,
+                "class_name": detection.class_name,
+                "confidence": detection.confidence,
+                "bbox": {
+                    "x1": detection.x_min,
+                    "y1": detection.y_min,
+                    "x2": detection.x_max,
+                    "y2": detection.y_max,
+                },
+                "detection_type": detection.detection_type,
+            }
+            for detection in inspection.detections
+        ],
+    }
 
 @app.get("/api/inspection/{inspection_id}/image")
 def get_inspection_image(
