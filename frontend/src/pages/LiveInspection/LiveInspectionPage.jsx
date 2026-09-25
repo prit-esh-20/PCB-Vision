@@ -6,6 +6,7 @@ import Button from "../../components/common/Button";
 import { useInspection, useScanProgress } from "../../hooks/useInspection";
 import ScanningOverlay from "../../components/animations/ScanningOverlay";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
+import { formatConfidence, getBboxStyle } from "../../utils/formatters";
 import {
   Camera,
   Activity,
@@ -265,21 +266,21 @@ export default function LiveInspectionPage() {
                       {inspection && !captureStage && !isNotPcb && (
                         <div className="absolute inset-0 z-[2] flex flex-col items-center justify-center gap-2 rounded-lg">
                           {inspection.detections?.length > 0 ? (
-                            inspection.detections.map((det) => (
-                              <div
-                                key={det.id}
-                                className="absolute border-2 border-success bg-success/5 rounded font-mono text-[9px] text-success font-bold p-1"
-                                style={{
-                                  left: `${det.bbox.left}%`,
-                                  top: `${det.bbox.top}%`,
-                                  width: `${det.bbox.width}%`,
-                                  height: `${det.bbox.height}%`,
-                                }}
-                              >
-                                <span className="block">{det.label}</span>
-                                <span>CONF: {det.confidence}%</span>
-                              </div>
-                            ))
+                            inspection.detections.map((det, idx) => {
+                              const boxStyle = getBboxStyle(det.bbox);
+                              const labelName = det.className || det.label || det.class_name || det.id || `Det ${idx + 1}`;
+                              const confText = formatConfidence(det.confidence);
+                              return (
+                                <div
+                                  key={det.id || idx}
+                                  className="absolute border-2 border-accent bg-accent/10 rounded font-mono text-[9px] text-accent font-bold p-1"
+                                  style={boxStyle}
+                                >
+                                  <span className="block">{labelName}</span>
+                                  <span>CONF: {confText}</span>
+                                </div>
+                              );
+                            })
                           ) : (
                             <span className="font-mono text-[9px] uppercase tracking-widest text-slate-600">
                               No detections available
@@ -533,7 +534,7 @@ export default function LiveInspectionPage() {
                       Confidence
                     </span>
                     <span className="font-display text-[11px] font-extrabold text-accent tracking-wider">
-                      {inspection.confidence != null ? `${inspection.confidence}%` : "—"}
+                      {inspection.confidence != null ? formatConfidence(inspection.confidence) : "—"}
                     </span>
                   </div>
 

@@ -1,3 +1,5 @@
+import sys
+from pathlib import Path
 import psutil
 import time
 import csv
@@ -21,6 +23,14 @@ from reportlab.lib.pagesizes import A4
 
 from database import get_db
 from fastapi import FastAPI
+
+# Allow backend to import the project-level ML package
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from ml.inference import inspect_pcb
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -1832,14 +1842,80 @@ def run_inspection(
             "message": "Inspection record not found"
         }
 
-    inspection.status = "PASS"
-    inspection.model_name = "Pending"
-    inspection.xai_explanation = "ML inspection pending."
+    # ---------------------------------------------------------
+    # Run trained YOLO model
+    # ---------------------------------------------------------
+
+    image_path = inspection.image_path
+
+    if not image_path:
+        return {
+            "status": "ERROR",
+            "message": "Inspection image path not found"
+        }
+
+    try:
+        ml_result = inspect_pcb(image_path)
+    except Exception as exc:
+        return {
+            "status": "ERROR",
+            "message": f"ML inspection failed: {str(exc)}"
+        }
+
+    # ---------------------------------------------------------
+    # Store ML result
+    # ---------------------------------------------------------
+
+    inspection.model_name = "PCBVision YOLO11s"
+    inspection.inspection_time = ml_result["inference_time"]
+
+    # Keep status neutral for now.
+    # PASS/FAIL will be decided later using verification logic.
+    inspection.status = "INSPECTED"
+
+    # Store highest detection confidence as a temporary
+    # inspection-level confidence value.
+    if ml_result["detections"]:
+        inspection.confidence = max(
+            detection["confidence"]
+            for detection in ml_result["detections"]
+        )
+    else:
+        inspection.confidence = None
+
+    # ---------------------------------------------------------
+    # Save individual detections
+    # ---------------------------------------------------------
+
+    for detection in ml_result["detections"]:
+        bbox = detection["bbox"]
+
+        db_detection = Detection(
+            inspection_id=inspection.id,
+            class_name=detection["class_name"],
+            confidence=detection["confidence"],
+            x_min=bbox["x1"],
+            y_min=bbox["y1"],
+            x_max=bbox["x2"],
+            y_max=bbox["y2"],
+            detection_type="YOLO"
+        )
+
+        db.add(db_detection)
+
+    # ---------------------------------------------------------
+    # Temporary XAI state
+    # ---------------------------------------------------------
+
+    inspection.xai_explanation = (
+        "YOLO detection completed. "
+        "X-MCCV verification and XAI analysis are pending."
+    )
 
     notification = Notification(
         type="success",
         title="Inspection Completed",
-        message=f"PCB inspection completed for {inspection.board_id}.",
+        message=f"PCB image analyzed using PCBVision YOLO11s for {inspection.board_id}.",
         inspection_id=inspection.id
     )
 

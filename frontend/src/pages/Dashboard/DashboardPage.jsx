@@ -7,7 +7,7 @@ import StatusBadge from "../../components/common/StatusBadge";
 import { useAuth } from "../../context/AuthContext";
 import { useNotifications } from "../../context/NotificationContext";
 import { useDashboard } from "../../hooks/useDashboard";
-import { useInspection } from "../../hooks/useInspection";
+import { useInspection, INSPECTION_STATE } from "../../hooks/useInspection";
 import { useUpload } from "../../hooks/useUpload";
 import ScanningOverlay from "../../components/animations/ScanningOverlay";
 import { useReport } from "../../hooks/useReport";
@@ -15,13 +15,14 @@ import { useExport } from "../../hooks/useExport";
 import { useSnapshot } from "../../hooks/useSnapshot";
 import { useXAI } from "../../hooks/useXAI";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
+import { formatConfidence, getBboxStyle } from "../../utils/formatters";
 import { TREND_7_DAYS } from "../../services/mock/mockData";
 import NotificationHost from "../../components/common/NotificationHost";
 import {
   AreaChart, Area, ResponsiveContainer,
 } from "recharts";
 import {
-  Play, Camera, Loader2,
+  Play, Camera, Loader2, RefreshCw,
   AlertTriangle, CheckCircle, Clock, Bell, Upload, FileText, Download, Image,
   Search, ChevronDown, Settings, LogOut, User, X,
   Scan, Layers, GitBranch, Info, Sparkles,
@@ -73,10 +74,13 @@ export default function DashboardPage() {
   const {
     pcbImage,
     inspection,
-    scanPhase,
+    state: inspectionState,
     errorMessage: inspectionError,
+    scanPhase,
     setPcbImage,
     clearPcbImage,
+    runInspection,
+    refreshInspection,
     resetInspection,
   } = useInspection();
 
@@ -182,9 +186,40 @@ export default function DashboardPage() {
   };
 
   // ---- Action handlers ----------------------------------------------------
-  // Note: inspections are started from the PCB Inspection page. The Dashboard
-  // is a monitoring/overview surface — it never drives the inspection
-  // lifecycle itself.
+  const handleStartInspection = useCallback(async () => {
+    if (scanning || inspectionState === INSPECTION_STATE.STARTING || inspectionState === INSPECTION_STATE.INSPECTING) return;
+
+    const currentPcbImage = pcbImage || (uploadedImage ? {
+      url: uploadedImage.url,
+      uploadId: uploadedImage.uploadId || null,
+      name: uploadedImage.name || "Uploaded PCB",
+    } : null);
+
+    if (!currentPcbImage && !uploadedImage) {
+      setActionStatus({ type: "error", text: "Please upload or test with a PCB image before starting inspection." });
+      notify({ type: "error", title: "No PCB Image Available", message: "Please upload a PCB image before starting an inspection." });
+      return;
+    }
+
+    if (uploadedImage && !pcbImage) {
+      setPcbImage(currentPcbImage);
+    }
+
+    setActionStatus(null);
+    const payload = uploadedImage?.uploadId ? { uploadId: uploadedImage.uploadId } : (currentPcbImage?.uploadId ? { uploadId: currentPcbImage.uploadId } : undefined);
+    const result = await runInspection(payload);
+    if (!result.ok) {
+      notify({ type: "error", title: "Unable to start inspection.", message: result.message });
+      setActionStatus({ type: "error", text: result.message });
+    }
+  }, [scanning, inspectionState, uploadedImage, pcbImage, setPcbImage, runInspection, notify]);
+
+  const handleFetchResult = useCallback(async () => {
+    const result = await refreshInspection();
+    if (!result.ok) {
+      notify({ type: "error", title: "Unable to load inspection result.", message: result.message });
+    }
+  }, [refreshInspection, notify]);
 
   const handleFileSelected = useCallback(
     async (e) => {
@@ -310,44 +345,63 @@ export default function DashboardPage() {
   // defect-specific explanations.
   const xai = inspection?.xai ?? {};
   const isPass = inspection?.status === "PASS";
-const isMlPending = inspection?.modelName === "Pending";
+  const isInspected = inspection?.status === "INSPECTED";
+  const isMlPending = inspection?.modelName === "Pending";
 
-const xaiWhatWrong = isNotPcb
-  ? "The uploaded image could not be identified as a valid PCB."
-  : (xai.defect ||
-    xai.explanation ||
-    inspection?.xaiExplanation ||
-    (isPass
-      ? "No significant visual defect detected."
-      : "The backend flagged this board as defective, but has not provided an explanation yet."));
+  const xaiWhatWrong = isNotPcb
+    ? "The uploaded image could not be identified as a valid PCB."
+    : isInspected
+      ? "YOLO detection completed. X-MCCV verification and XAI analysis are pending."
+      : (xai.defect ||
+        xai.explanation ||
+        inspection?.xaiExplanation ||
+        (isPass
+          ? "No significant visual defect detected."
+          : "The backend flagged this board as defective, but has not provided an explanation yet."));
 
-const xaiWhyPass = isMlPending
-  ? "The ML inspection model has not been integrated yet. This PASS result is a temporary backend state."
-  : isPass
-    ? (xai.explanation ||
-      "The inspected component regions and PCB layout appear consistent with the expected visual pattern.")
-    : "";
+  const xaiWhyPass = isMlPending
+    ? "The ML inspection model has not been integrated yet. This PASS result is a temporary backend state."
+    : isPass
+      ? (xai.explanation ||
+        "The inspected component regions and PCB layout appear consistent with the expected visual pattern.")
+      : "";
 
-const xaiWhere = xai.location ||
-  (isMlPending
-    ? "Defect location will be available after ML inspection is integrated."
-    : "The backend has not provided the affected region yet.");
+  const xaiWhere = xai.location ||
+    (isInspected
+      ? "YOLO detected objects on the board. X-MCCV verification is pending."
+      : isMlPending
+        ? "Defect location will be available after ML inspection is integrated."
+        : "The backend has not provided the affected region yet.");
 
-const xaiFix = isMlPending
-  ? "No corrective action is available yet. ML-based defect detection will provide the actual recommendation."
-  : xai.recommendation ||
-    (isPass
-      ? "No corrective action required. Board can proceed to the next stage."
-      : "Corrective action details are not available from the backend yet. Inspect the highlighted region and rerun the inspection.");
+  const xaiFix = isInspected
+    ? "YOLO detection completed. X-MCCV verification and XAI analysis are pending."
+    : isMlPending
+      ? "No corrective action is available yet. ML-based defect detection will provide the actual recommendation."
+      : xai.recommendation ||
+        (isPass
+          ? "No corrective action required. Board can proceed to the next stage."
+          : "Corrective action details are not available from the backend yet. Inspect the highlighted region and rerun the inspection.");
 
 const xaiVisualUrl = null;
   const cameraBadge = CAMERA_BADGE[cameraStatus.status] || CAMERA_BADGE.UNKNOWN;
 
-  // Bottom status bar reflects the shared inspection lifecycle (driven from
-  // the PCB Inspection page): either a result exists or the system is ready.
-  const hudStatus = inspection
-    ? null
-    : { text: "READY", cls: "text-slate-400" };
+  // Bottom status bar presentation per inspection lifecycle state.
+  const hudStatus = {
+    [INSPECTION_STATE.READY]: { text: "READY", cls: "text-slate-400" },
+    [INSPECTION_STATE.STARTING]: { text: "INSPECTING", cls: "text-warning" },
+    [INSPECTION_STATE.INSPECTING]: { text: "INSPECTING", cls: "text-warning" },
+    [INSPECTION_STATE.ERROR]: { text: "INSPECTION ERROR", cls: "text-danger" },
+  }[inspectionState];
+
+  const inspectionButton = scanning
+    ? { label: "Inspecting...", icon: RefreshCw, loading: true, disabled: true }
+    : {
+        [INSPECTION_STATE.READY]: { label: "Start Inspection", icon: Play, loading: false, disabled: false },
+        [INSPECTION_STATE.STARTING]: { label: "Starting...", icon: Loader2, loading: true, disabled: true },
+        [INSPECTION_STATE.INSPECTING]: { label: "Inspecting...", icon: RefreshCw, loading: false, disabled: false },
+        [INSPECTION_STATE.COMPLETED]: { label: "Start Inspection", icon: Play, loading: false, disabled: false },
+        [INSPECTION_STATE.ERROR]: { label: "Retry Inspection", icon: Play, loading: false, disabled: false },
+      }[inspectionState] || { label: "Start Inspection", icon: Play, loading: false, disabled: false };
 
   return (
     <AppLayout>
@@ -512,15 +566,20 @@ const xaiVisualUrl = null;
           {/* ---- QUICK ACTIONS ---- */}
           <motion.div variants={itemVariants} className="space-y-2">
             <div className="flex flex-wrap items-center gap-3">
-              {/* START INSPECTION — navigates to the PCB Inspection page */}
+              {/* START INSPECTION */}
               <motion.button
-                whileHover={{ scale: 1.03, y: -2 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => navigate("/inspection")}
-                className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-primary-bg shadow-lg transition-all duration-300 hover:shadow-[0_0_30px_rgba(50,213,131,0.25)]"
+                whileHover={inspectionButton.disabled ? undefined : { scale: 1.03, y: -2 }}
+                whileTap={inspectionButton.disabled ? undefined : { scale: 0.97 }}
+                onClick={inspectionState === INSPECTION_STATE.INSPECTING ? handleFetchResult : handleStartInspection}
+                disabled={inspectionButton.disabled}
+                className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest shadow-lg transition-all duration-300 ${
+                  inspectionButton.disabled
+                    ? "cursor-not-allowed bg-accent/40 text-primary-bg/70"
+                    : "bg-accent text-primary-bg hover:shadow-[0_0_30px_rgba(50,213,131,0.25)]"
+                }`}
               >
-                <Play className="h-3.5 w-3.5" />
-                Start Inspection
+                <inspectionButton.icon className={`h-3.5 w-3.5 ${inspectionButton.loading ? "animate-spin" : ""}`} />
+                {inspectionButton.label}
               </motion.button>
 
               {/* TEST WITH PCB IMAGE — secondary/testing path via the existing local upload */}
@@ -741,7 +800,7 @@ const xaiVisualUrl = null;
                             { label: "Missing", value: presenceFailures, color: presenceFailures ? "text-danger" : "text-success" },
                             { label: "Orient. Err.", value: inspection.verificationDetails.orientation.filter((o) => o.status === "FAIL").length, color: "text-success" },
                             { label: "X-MCCV", value: allChecksPass ? "100%" : "0%", color: "text-accent" },
-                            { label: "Confidence", value: `${inspection.confidence}%`, color: "text-accent" },
+                            { label: "Confidence", value: formatConfidence(inspection.confidence), color: "text-accent" },
                           ].map((s) => (
                             <div key={s.label} className="flex items-center justify-between border-b border-accent/[0.04] py-0.5">
                               <span className="text-[8px] font-mono text-slate-500">{s.label}</span>
@@ -864,25 +923,27 @@ const xaiVisualUrl = null;
 
                                 {/* YOLO detection boxes — only when the backend returned real detections */}
                                 <AnimatePresence>
-                                  {inspection && !summaryView && inspection.detections?.length > 0 && inspection.detections.map((det) => (
-                                    <motion.div
-                                      key={det.id}
-                                      initial={{ opacity: 0, scale: 0.8 }}
-                                      animate={{ opacity: 1, scale: 1 }}
-                                      exit={{ opacity: 0 }}
-                                      transition={{ duration: 0.4 }}
-                                      className="absolute border-2 border-success/50 bg-success/5 rounded cursor-pointer"
-                                      style={{
-                                        left: `${det.bbox.left}%`,
-                                        top: `${det.bbox.top}%`,
-                                        width: `${det.bbox.width}%`,
-                                        height: `${det.bbox.height}%`,
-                                      }}
-                                      onClick={() => handleComponentClick(det)}
-                                    >
-                                      <span className="absolute -top-3.5 left-0 font-mono text-[7px] text-success font-bold bg-black/80 px-1 rounded whitespace-nowrap">{det.id} {det.confidence}%</span>
-                                    </motion.div>
-                                  ))}
+                                  {inspection && !summaryView && inspection.detections?.length > 0 && inspection.detections.map((det, idx) => {
+                                    const boxStyle = getBboxStyle(det.bbox, imageDims);
+                                    const labelName = det.className || det.label || det.class_name || det.id || `Det ${idx + 1}`;
+                                    const confText = formatConfidence(det.confidence);
+                                    return (
+                                      <motion.div
+                                        key={det.id || idx}
+                                        initial={{ opacity: 0, scale: 0.8 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        transition={{ duration: 0.4 }}
+                                        className="absolute border-2 border-accent bg-accent/10 rounded cursor-pointer z-10 font-mono text-[9px] text-accent font-bold"
+                                        style={boxStyle}
+                                        onClick={() => handleComponentClick(det)}
+                                      >
+                                        <span className="absolute -top-4 left-0 font-mono text-[8px] text-primary-bg font-bold bg-accent px-1 rounded whitespace-nowrap shadow">
+                                          {labelName} {confText !== "—" ? confText : ""}
+                                        </span>
+                                      </motion.div>
+                                    );
+                                  })}
                                 </AnimatePresence>
                               </>
                             )}
@@ -900,15 +961,28 @@ const xaiVisualUrl = null;
                         <div className="flex items-center gap-3">
                           <span className="text-slate-500">Board:</span>
                           <span className="font-bold text-white">{inspection?.pcbId || "—"}</span>
+                          {(inspection?.inspectionTime != null || inspection?.cycleTime != null) && (
+                            <>
+                              <span className="text-slate-600">|</span>
+                              <span className="text-slate-500">
+                                Time: <span className="text-white">{(inspection.inspectionTime ?? inspection.cycleTime)}s</span>
+                              </span>
+                            </>
+                          )}
                         </div>
                         <div className="flex items-center gap-3">
                           {hudStatus ? (
                             <span className={`font-bold uppercase tracking-wider ${hudStatus.cls}`}>{hudStatus.text}</span>
                           ) : (
-                            <StatusBadge status={inspection.status} />
+                            <StatusBadge status={inspection?.status} />
+                          )}
+                          {inspection?.detections && (
+                            <span className="text-slate-500">
+                              Detections: <span className="text-white">{inspection.detections.length}</span>
+                            </span>
                           )}
                           <span className="text-slate-500">
-                            Conf: <span className="text-white">{inspection?.confidence != null ? `${inspection.confidence}%` : "—"}</span>
+                            Conf: <span className="text-white">{inspection?.confidence != null ? formatConfidence(inspection.confidence) : "—"}</span>
                           </span>
                         </div>
                       </div>
