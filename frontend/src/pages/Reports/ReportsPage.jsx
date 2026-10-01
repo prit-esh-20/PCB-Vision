@@ -267,7 +267,7 @@ export default function ReportsPage() {
           </div>
 
           {/* RIGHT COLUMN: Available Reports List */}
-          <div className="space-y-4 h-full overflow-y-auto overscroll-contain">
+          <div className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto overscroll-contain">
             {loading ? (
               <div className="h-64 flex items-center justify-center font-mono text-xs text-slate-500 uppercase tracking-widest">
                 Loading reports...
