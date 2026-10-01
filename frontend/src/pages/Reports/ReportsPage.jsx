@@ -138,7 +138,7 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-7 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-7 items-start h-full">
           {/* LEFT COLUMN: Report Generator Form */}
           <div className="text-left">
             <GlassCard className="!p-6" hoverLift={false}>
@@ -267,7 +267,7 @@ export default function ReportsPage() {
           </div>
 
           {/* RIGHT COLUMN: Available Reports List */}
-          <div className="space-y-4">
+          <div className="space-y-4 h-full overflow-y-auto overscroll-contain">
             {loading ? (
               <div className="h-64 flex items-center justify-center font-mono text-xs text-slate-500 uppercase tracking-widest">
                 Loading reports...
