@@ -1742,9 +1742,7 @@ def get_dashboard_stats(
         microsecond=0
     )
 
-    start_of_yesterday = start_of_today.replace(
-        day=start_of_today.day - 1
-    )
+    start_of_yesterday = start_of_today - timedelta(days=1)
 
     today_inspections = (
         db.query(Inspection)
