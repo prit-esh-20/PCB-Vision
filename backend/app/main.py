@@ -1985,8 +1985,16 @@ def get_inspection_image(
 def get_notifications(
     db: Session = Depends(get_db)
 ):
+    today = datetime.now().replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
     notifications = (
         db.query(Notification)
+        .filter(Notification.created_at >= today)
         .order_by(Notification.created_at.desc())
         .limit(50)
         .all()
