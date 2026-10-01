@@ -446,16 +446,23 @@ const xaiVisualUrl = null;
                       >
                         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Notifications</p>
                         <div className="space-y-1 max-h-[320px] overflow-y-auto overscroll-contain pr-1">
-                          {items.map((n) => (
-                            <div key={n.id} className="flex items-start gap-2.5 rounded-lg px-2.5 py-2 text-xs text-slate-300 transition-colors hover:bg-white/5">
-                              <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${n.type === "fail" ? "bg-danger" : n.type === "success" ? "bg-success" : "bg-accent"}`} />
-                              <div className="flex-1">
-                                <p className="font-medium text-slate-200">{n.title}</p>
-                                <p className="mt-0.5 text-slate-400">{n.message}</p>
-                                <p className="text-[10px] text-slate-600">{n.time}</p>
-                              </div>
+                          {items.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-center">
+                              <p className="font-semibold uppercase tracking-wider text-slate-300">NO NOTIFICATIONS</p>
+                              <p className="mt-1 text-[11px] text-slate-500">You're all caught up for today.</p>
                             </div>
-                          ))}
+                          ) : (
+                            items.map((n) => (
+                              <div key={n.id} className="flex items-start gap-2.5 rounded-lg px-2.5 py-2 text-xs text-slate-300 transition-colors hover:bg-white/5">
+                                <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${n.type === "fail" ? "bg-danger" : n.type === "success" ? "bg-success" : "bg-accent"}`} />
+                                <div className="flex-1">
+                                  <p className="font-medium text-slate-200">{n.title}</p>
+                                  <p className="mt-0.5 text-slate-400">{n.message}</p>
+                                  <p className="text-[10px] text-slate-600">{n.time}</p>
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div>
                       </motion.div>
                     )}
