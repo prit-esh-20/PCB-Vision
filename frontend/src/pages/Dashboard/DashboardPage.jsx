@@ -123,7 +123,10 @@ export default function DashboardPage() {
   const [actionStatus, setActionStatus] = useState(null);
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
   const [templateImageCount, setTemplateImageCount] = useState(1);
+  const [templateReferenceImages, setTemplateReferenceImages] = useState([]);
+  const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   const [templateModalMessage, setTemplateModalMessage] = useState("");
+  const [templateName, setTemplateName] = useState("");
   const notifRef = useRef(null);
   const userRef = useRef(null);
   const searchRef = useRef(null);
@@ -1266,7 +1269,22 @@ const xaiVisualUrl = null;
       >
         <div className="space-y-5">
           <p className="text-sm text-slate-300">Capture reference images to create a PCB component template.</p>
-          
+          <div className="space-y-2">
+            <label
+              htmlFor="template-name"
+              className="block font-mono text-[10px] uppercase tracking-wider text-slate-400"
+            >
+              Template Name
+            </label>
+            <input
+              id="template-name"
+              type="text"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="Enter template name"
+              className="w-full rounded-lg border border-accent/20 bg-white/[0.02] px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-accent/40 focus:ring-2 focus:ring-accent/15 transition-all"
+            />
+          </div>
           <div className="space-y-2">
             <label 
               htmlFor="template-image-count" 
@@ -1289,6 +1307,36 @@ const xaiVisualUrl = null;
             />
           </div>
           
+          
+        <div className="space-y-2">
+          <label
+            htmlFor="template-reference-images"
+            className="block font-mono text-[10px] uppercase tracking-wider text-slate-400"
+          >
+            Select Reference Images
+          </label>
+
+          <input
+            id="template-reference-images"
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+            multiple
+            onChange={(e) => {
+              const files = Array.from(e.target.files || []);
+              setTemplateReferenceImages(files);
+              setTemplateImageCount(files.length || 1);
+              e.target.value = "";
+              setTemplateModalMessage("");
+            }}
+            className="block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-accent/15 file:px-3 file:py-2 file:text-accent"
+          />
+
+          <p className="text-xs text-slate-400">
+            Selected: {templateReferenceImages.length} image(s)
+          </p>
+        </div>
+
+
           {templateModalMessage && (
             <p className="text-sm text-accent font-mono">{templateModalMessage}</p>
           )}

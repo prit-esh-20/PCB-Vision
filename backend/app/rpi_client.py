@@ -38,3 +38,43 @@ async def check_rpi_connection() -> dict:
             "connected": False,
             "message": f"Raspberry Pi connection failed: {exc}",
         }
+
+
+async def create_rpi_template(
+    template_name: str,
+    reference_images: list,
+) -> dict:
+    if not RPI_BASE_URL:
+        raise RuntimeError("Raspberry Pi address is not configured.")
+
+    files = []
+    opened_files = []
+
+    try:
+        for image in reference_images:
+            image.file.seek(0)
+            opened_files.append(image.file)
+
+            files.append(
+                (
+                    "reference_images",
+                    (
+                        image.filename or "reference.png",
+                        image.file,
+                        image.content_type or "image/png",
+                    ),
+                )
+            )
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{RPI_BASE_URL}/templates/create",
+                data={"template_name": template_name},
+                files=files,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    finally:
+        for image_file in opened_files:
+            image_file.close()

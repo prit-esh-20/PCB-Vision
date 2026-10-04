@@ -23,11 +23,15 @@ from sqlalchemy.orm import Session
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
+from app.rpi_client import create_rpi_template
+
 from database import get_db
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
 class CreateTemplateRequest(BaseModel):
+    template_name: str = Field(min_length=1, max_length=100)
     expected_images: int = Field(ge=1, le=50)
+
 
 # Allow backend to import the project-level ML package
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -107,17 +111,48 @@ async def rpi_health():
     return result
 
 # Create a template session; Pi capture integration comes later.
+
 @app.post("/api/template/create", status_code=201)
-def create_template(
-    request: CreateTemplateRequest,
+async def create_template(
+    template_name: str = Form(..., min_length=1, max_length=100),
+    expected_images: int = Form(..., ge=1, le=50),
+    reference_images: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
+    if len(reference_images) != expected_images:
+        raise HTTPException(
+            status_code=400,
+            detail="The number of uploaded images must match expected_images.",
+        )
+
+    for image in reference_images:
+        if image.content_type not in {
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+        }:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported image type: {image.filename}",
+            )
+
+    try:
+        pi_result = await create_rpi_template(
+            template_name=template_name,
+            reference_images=reference_images,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Raspberry Pi template creation failed: {exc}",
+        ) from exc
+
     template_id = f"TPL-{uuid.uuid4().hex[:12].upper()}"
 
     template_session = TemplateSession(
         template_id=template_id,
-        expected_images=request.expected_images,
-        captured_images=0,
+        expected_images=expected_images,
+        captured_images=len(reference_images),
         status="PENDING",
     )
 
@@ -126,11 +161,13 @@ def create_template(
     db.refresh(template_session)
 
     return {
-        "message": "Template session created. Raspberry Pi capture is not connected yet.",
+        "message": "Template creation request forwarded to Raspberry Pi.",
         "template_id": template_session.template_id,
+        "template_name": template_name,
         "expected_images": template_session.expected_images,
         "captured_images": template_session.captured_images,
         "status": template_session.status,
+        "raspberry_pi_result": pi_result,
     }
 
 @app.get("/api/health")
