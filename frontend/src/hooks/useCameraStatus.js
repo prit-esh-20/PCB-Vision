@@ -21,7 +21,13 @@ export function useCameraStatus() {
 
         if (!cancelled) {
           setCameraStatus({
-            status: res?.status || "UNKNOWN",
+            status: res?.connected === true
+            ? "READY"
+            : res?.status === "INITIALIZING"
+              ? "INITIALIZING"
+              : res?.status === "ERROR"
+                ? "ERROR"
+                : "DISCONNECTED",
             connected: res?.connected === true,
             message: res?.message || "",
           });

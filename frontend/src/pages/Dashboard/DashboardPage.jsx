@@ -15,10 +15,12 @@ import { useExport } from "../../hooks/useExport";
 import { useSnapshot } from "../../hooks/useSnapshot";
 import { useXAI } from "../../hooks/useXAI";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
+import { useRpiStatus } from "../../hooks/useRpiStatus";
 import { formatConfidence, getBboxStyle } from "../../utils/formatters";
 import { TREND_7_DAYS } from "../../services/mock/mockData";
 import NotificationHost from "../../components/common/NotificationHost";
 import Modal from "../../components/common/Modal";
+import { uploadApi } from "../../services/api/uploadApi";
 import {
   AreaChart, Area, ResponsiveContainer,
 } from "recharts";
@@ -27,7 +29,7 @@ import {
   AlertTriangle, CheckCircle, Clock, Bell, Upload, FileText, Download, Image,
   Search, ChevronDown, Settings, LogOut, User, X,
   Scan, Layers, GitBranch, Info, Sparkles,
-  Wrench, Plus,
+  Wrench, Plus, Wifi, Server, WifiOff,
 } from "lucide-react";
 
 const containerVariants = {
@@ -112,6 +114,7 @@ export default function DashboardPage() {
   } = useXAI();
 
   const { cameraStatus } = useCameraStatus();
+  const { rpiStatus } = useRpiStatus();
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showNotifications, setShowNotifications] = useState(false);
@@ -572,6 +575,30 @@ const xaiVisualUrl = null;
                       <span className={`font-semibold ${m.color}`}>{m.value}</span>
                     </span>
                   ))}
+                </div>
+                {/* Raspberry Pi connectivity status — separate from camera status */}
+                <div className="flex items-center gap-2 mt-2">
+                  {rpiStatus.status === "CONNECTED" ? (
+                    <>
+                      <Wifi className="h-3 w-3 text-success" />
+                      <span className="font-mono text-[10px] text-success uppercase tracking-wider">RPi Connected</span>
+                    </>
+                  ) : rpiStatus.status === "DISCONNECTED" ? (
+                    <>
+                      <WifiOff className="h-3 w-3 text-danger" />
+                      <span className="font-mono text-[10px] text-danger uppercase tracking-wider">RPi Disconnected</span>
+                    </>
+                  ) : rpiStatus.status === "ERROR" ? (
+                    <>
+                      <Server className="h-3 w-3 text-warning" />
+                      <span className="font-mono text-[10px] text-warning uppercase tracking-wider">RPi Error</span>
+                    </>
+                  ) : (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin text-slate-500" />
+                      <span className="font-mono text-[10px] text-slate-500 uppercase tracking-wider">RPi Checking...</span>
+                    </>
+                  )}
                 </div>
               </div>
               {/* CREATE NEW TEMPLATE button — positioned on RHS below LIVE indicator */}
@@ -1346,22 +1373,75 @@ const xaiVisualUrl = null;
               onClick={() => {
                 setShowCreateTemplateModal(false);
                 setTemplateModalMessage("");
+                setTemplateName("");
+                setTemplateReferenceImages([]);
+                setTemplateImageCount(1);
               }}
-              className="inline-flex items-center gap-2 rounded-lg border border-accent/20 bg-white/[0.03] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-white/80 transition-all hover:border-accent/40 hover:bg-accent/5 hover:text-white"
+              disabled={isCreatingTemplate}
+              className="inline-flex items-center gap-2 rounded-lg border border-accent/20 bg-white/[0.03] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-white/80 transition-all hover:border-accent/40 hover:bg-accent/5 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
-              onClick={() => {
-                if (templateImageCount >= 1) {
-                  setTemplateModalMessage(`Template creation initiated for ${templateImageCount} reference image(s). Backend integration pending.`);
-                } else {
-                  setTemplateModalMessage("Please enter a valid number (minimum 1).");
+              onClick={async () => {
+                if (!templateName.trim()) {
+                  setTemplateModalMessage("Please enter a template name.");
+                  return;
+                }
+                if (!templateReferenceImages.length) {
+                  setTemplateModalMessage("Please select at least one reference image.");
+                  return;
+                }
+                if (templateReferenceImages.length !== templateImageCount) {
+                  setTemplateModalMessage(
+                    `Image count mismatch: expected ${templateImageCount}, selected ${templateReferenceImages.length}.`
+                  );
+                  return;
+                }
+
+                setIsCreatingTemplate(true);
+                setTemplateModalMessage("");
+
+                try {
+                  const result = await uploadApi.createTemplate({
+                    templateName,
+                    expectedImages: templateImageCount,
+                    referenceImages: templateReferenceImages,
+                  });
+
+                  setTemplateModalMessage(
+                    `Template "${templateName}" created successfully! (ID: ${result.template_id})`
+                  );
+
+                  // Clear form on success
+                  setTemplateName("");
+                  setTemplateReferenceImages([]);
+                  setTemplateImageCount(1);
+
+                  // Close modal after a short delay to show success message
+                  setTimeout(() => {
+                    setShowCreateTemplateModal(false);
+                    setTemplateModalMessage("");
+                  }, 2000);
+                } catch (err) {
+                  setTemplateModalMessage(
+                    err.message || "Template creation failed. Please try again."
+                  );
+                } finally {
+                  setIsCreatingTemplate(false);
                 }
               }}
-              className="inline-flex items-center gap-2 rounded-lg bg-accent/15 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-accent border border-accent/30 transition-all hover:bg-accent/25 hover:border-accent/50"
+              disabled={isCreatingTemplate}
+              className="inline-flex items-center gap-2 rounded-lg bg-accent/15 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-accent border border-accent/30 transition-all hover:bg-accent/25 hover:border-accent/50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Continue
+              {isCreatingTemplate ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Continue"
+              )}
             </button>
           </div>
         </div>

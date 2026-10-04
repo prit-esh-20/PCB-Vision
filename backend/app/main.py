@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 import uuid
 from template_models import TemplateSession
-from app.rpi_client import check_rpi_connection
+from app.rpi_client import check_rpi_connection, check_rpi_camera_status
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, File, Depends, FastAPI, Query
 from database import get_db
@@ -1893,12 +1893,9 @@ def get_dashboard_stats(
     }
 
 @app.get("/api/camera/status")
-def get_camera_status():
-    return {
-        "status": "DISCONNECTED",
-        "connected": False,
-        "message": "Camera is not connected."
-    }
+async def get_camera_status():
+    result = await check_rpi_camera_status()
+    return result
 
 @app.post("/api/inspection/run")
 def run_inspection(

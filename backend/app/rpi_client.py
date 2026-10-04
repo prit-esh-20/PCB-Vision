@@ -40,6 +40,35 @@ async def check_rpi_connection() -> dict:
         }
 
 
+async def check_rpi_camera_status() -> dict:
+    if not RPI_BASE_URL:
+        return {
+            "status": "ERROR",
+            "connected": False,
+            "message": "Raspberry Pi address is not configured.",
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{RPI_BASE_URL}/camera/status")
+            response.raise_for_status()
+            data = response.json()
+
+        return {
+            "status": data.get("status", "UNKNOWN"),
+            "connected": data.get("connected", False),
+            "message": data.get("message", "Camera status retrieved from Raspberry Pi."),
+            "details": data,
+        }
+
+    except httpx.HTTPError as exc:
+        return {
+            "status": "DISCONNECTED",
+            "connected": False,
+            "message": f"Raspberry Pi camera status check failed: {exc}",
+        }
+
+
 async def create_rpi_template(
     template_name: str,
     reference_images: list,
