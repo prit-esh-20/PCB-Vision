@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from pathlib import Path
 import uuid
 from template_models import TemplateSession
+from app.rpi_client import check_rpi_connection
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, File, Depends, FastAPI, Query
 from database import get_db
@@ -99,6 +100,11 @@ def root():
     return {
         "message": "PCBVision API is running"
     }
+
+@app.get("/api/rpi/health")
+async def rpi_health():
+    result = await check_rpi_connection()
+    return result
 
 # Create a template session; Pi capture integration comes later.
 @app.post("/api/template/create", status_code=201)
