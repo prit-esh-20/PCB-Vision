@@ -18,6 +18,7 @@ import { useCameraStatus } from "../../hooks/useCameraStatus";
 import { formatConfidence, getBboxStyle } from "../../utils/formatters";
 import { TREND_7_DAYS } from "../../services/mock/mockData";
 import NotificationHost from "../../components/common/NotificationHost";
+import Modal from "../../components/common/Modal";
 import {
   AreaChart, Area, ResponsiveContainer,
 } from "recharts";
@@ -26,7 +27,7 @@ import {
   AlertTriangle, CheckCircle, Clock, Bell, Upload, FileText, Download, Image,
   Search, ChevronDown, Settings, LogOut, User, X,
   Scan, Layers, GitBranch, Info, Sparkles,
-  Wrench,
+  Wrench, Plus,
 } from "lucide-react";
 
 const containerVariants = {
@@ -120,6 +121,9 @@ export default function DashboardPage() {
   const [summaryView, setSummaryView] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [actionStatus, setActionStatus] = useState(null);
+  const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
+  const [templateImageCount, setTemplateImageCount] = useState(1);
+  const [templateModalMessage, setTemplateModalMessage] = useState("");
   const notifRef = useRef(null);
   const userRef = useRef(null);
   const searchRef = useRef(null);
@@ -566,6 +570,22 @@ const xaiVisualUrl = null;
                     </span>
                   ))}
                 </div>
+              </div>
+              {/* CREATE NEW TEMPLATE button — positioned on RHS below LIVE indicator */}
+              <div className="lg:ml-auto">
+                <motion.button
+                  whileHover={{ scale: 1.03, y: -2 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => {
+                    setTemplateImageCount(1);
+                    setTemplateModalMessage("");
+                    setShowCreateTemplateModal(true);
+                  }}
+                  className="group inline-flex items-center gap-2 rounded-xl border border-accent/20 bg-white/[0.03] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
+                >
+                  <Plus className="h-3.5 w-3.5 transition-transform duration-300 group-hover:scale-110" />
+                  Create New Template
+                </motion.button>
               </div>
             </div>
           </motion.div>
@@ -1239,6 +1259,65 @@ const xaiVisualUrl = null;
             </div>
           </div>
         )}
+      <Modal
+        isOpen={showCreateTemplateModal}
+        onClose={() => setShowCreateTemplateModal(false)}
+        title="Create New Template"
+      >
+        <div className="space-y-5">
+          <p className="text-sm text-slate-300">Capture reference images to create a PCB component template.</p>
+          
+          <div className="space-y-2">
+            <label 
+              htmlFor="template-image-count" 
+              className="block font-mono text-[10px] uppercase tracking-wider text-slate-400"
+            >
+              Number of Reference Images
+            </label>
+            <input
+              id="template-image-count"
+              type="number"
+              min="1"
+              value={templateImageCount}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val >= 1) {
+                  setTemplateImageCount(val);
+                }
+              }}
+              className="w-full rounded-lg border border-accent/20 bg-white/[0.02] px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-accent/40 focus:ring-2 focus:ring-accent/15 transition-all"
+            />
+          </div>
+          
+          {templateModalMessage && (
+            <p className="text-sm text-accent font-mono">{templateModalMessage}</p>
+          )}
+          
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-accent/10">
+            <button
+              onClick={() => {
+                setShowCreateTemplateModal(false);
+                setTemplateModalMessage("");
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-accent/20 bg-white/[0.03] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-white/80 transition-all hover:border-accent/40 hover:bg-accent/5 hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (templateImageCount >= 1) {
+                  setTemplateModalMessage(`Template creation initiated for ${templateImageCount} reference image(s). Backend integration pending.`);
+                } else {
+                  setTemplateModalMessage("Please enter a valid number (minimum 1).");
+                }
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-accent/15 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-accent border border-accent/30 transition-all hover:bg-accent/25 hover:border-accent/50"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      </Modal>
     </AppLayout>
   );
 }
