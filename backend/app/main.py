@@ -7,9 +7,10 @@ from io import StringIO
 from datetime import datetime, timezone, timedelta
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pathlib import Path
 import uuid
+from template_models import TemplateSession
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, File, Depends, FastAPI, Query
 from database import get_db
@@ -23,6 +24,9 @@ from reportlab.lib.pagesizes import A4
 
 from database import get_db
 from fastapi import FastAPI
+
+class CreateTemplateRequest(BaseModel):
+    expected_images: int = Field(ge=1, le=50)
 
 # Allow backend to import the project-level ML package
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -96,6 +100,32 @@ def root():
         "message": "PCBVision API is running"
     }
 
+# Create a template session; Pi capture integration comes later.
+@app.post("/api/template/create", status_code=201)
+def create_template(
+    request: CreateTemplateRequest,
+    db: Session = Depends(get_db),
+):
+    template_id = f"TPL-{uuid.uuid4().hex[:12].upper()}"
+
+    template_session = TemplateSession(
+        template_id=template_id,
+        expected_images=request.expected_images,
+        captured_images=0,
+        status="PENDING",
+    )
+
+    db.add(template_session)
+    db.commit()
+    db.refresh(template_session)
+
+    return {
+        "message": "Template session created. Raspberry Pi capture is not connected yet.",
+        "template_id": template_session.template_id,
+        "expected_images": template_session.expected_images,
+        "captured_images": template_session.captured_images,
+        "status": template_session.status,
+    }
 
 @app.get("/api/health")
 def health_check():
