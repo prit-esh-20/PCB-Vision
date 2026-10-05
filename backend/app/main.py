@@ -5,13 +5,17 @@ import time
 import csv
 from io import StringIO
 from datetime import datetime, timezone, timedelta
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pathlib import Path
 import uuid
 from template_models import TemplateSession
-from app.rpi_client import check_rpi_connection, check_rpi_camera_status
+from app.rpi_client import (
+    check_rpi_connection,
+    check_rpi_camera_status,
+    capture_rpi_image,
+)
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, File, Depends, FastAPI, Query
 from database import get_db
@@ -1896,6 +1900,25 @@ def get_dashboard_stats(
 async def get_camera_status():
     result = await check_rpi_camera_status()
     return result
+
+@app.post("/api/camera/capture")
+async def capture_camera_image():
+    try:
+        image_bytes = await capture_rpi_image()
+
+        return Response(
+            content=image_bytes,
+            media_type="image/jpeg",
+            headers={
+                "Content-Disposition": 'inline; filename="latest_capture.jpg"'
+            },
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=str(exc),
+        ) from exc
 
 @app.post("/api/inspection/run")
 def run_inspection(
