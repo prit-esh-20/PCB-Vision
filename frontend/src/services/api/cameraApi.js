@@ -12,4 +12,20 @@ export const cameraApi = {
     const { data } = await apiClient.get("/camera/status");
     return data;
   },
+
+  async capture() {
+    if (API_CONFIG.useMock) {
+      throw new Error("Camera capture requires the Raspberry Pi connection.");
+    }
+
+    const response = await apiClient.post(
+      "/camera/capture",
+      {},
+      {
+        responseType: "blob",
+      }
+    );
+
+    return response.data;
+  },
 };

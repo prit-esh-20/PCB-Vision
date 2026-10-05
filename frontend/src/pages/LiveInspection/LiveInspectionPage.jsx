@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppLayout from "../../components/layout/AppLayout";
 import GlassCard from "../../components/cards/GlassCard";
 import Button from "../../components/common/Button";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
+import { cameraApi } from "../../services/api/cameraApi";
 import {
   Camera,
   Activity,
@@ -17,10 +18,45 @@ export default function LiveInspectionPage() {
   const cameraDisconnected = cameraStatus.status === "DISCONNECTED" || !cameraConnected;
 
   const [notice, setNotice] = useState(null);
+  const [capturedImageUrl, setCapturedImageUrl] = useState(null);
+  const [isCapturing, setIsCapturing] = useState(false);
 
-  const handleStartInspection = () => {
-    if (!cameraConnected) return;
-    setNotice("Hardware capture workflow reserved for Arducam integration.");
+  useEffect(() => {
+    return () => {
+      if (capturedImageUrl) {
+        URL.revokeObjectURL(capturedImageUrl);
+      }
+    };
+  }, [capturedImageUrl]);
+
+  const handleStartInspection = async () => {
+    if (!cameraConnected || isCapturing) return;
+
+    setIsCapturing(true);
+    setNotice("Capturing image from Raspberry Pi...");
+
+    try {
+      const imageBlob = await cameraApi.capture();
+
+      if (!imageBlob || imageBlob.size === 0) {
+        throw new Error("The camera returned an empty image.");
+      }
+
+      const newImageUrl = URL.createObjectURL(imageBlob);
+
+      setCapturedImageUrl(newImageUrl);
+      setNotice("Image captured successfully.");
+    } catch (error) {
+      console.error("Camera capture failed:", error);
+
+      setNotice(
+        error.response?.data?.detail ||
+          error.message ||
+          "Image capture failed. Check the Raspberry Pi connection."
+      );
+    } finally {
+      setIsCapturing(false);
+    }
   };
 
   // Schematic PCB frame: a technical stand-in for the captured PCB area —
@@ -73,10 +109,10 @@ export default function LiveInspectionPage() {
               variant="secondary"
               className="flex items-center gap-1.5 py-1 px-2.5"
               onClick={handleStartInspection}
-              disabled={!cameraConnected}
+              disabled={!cameraConnected || isCapturing}
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              START INSPECTION
+                {isCapturing ? "CAPTURING..." : "START INSPECTION"}
             </Button>
           </div>
         </div>
@@ -116,45 +152,48 @@ export default function LiveInspectionPage() {
                 </div>
               ) : (
                 <>
-                  {/* Image container — centered PCB frame */}
                   <div className="relative z-0 flex h-full w-full items-center justify-center">
-                    <div
-                      className="relative w-full max-h-full overflow-hidden"
-                      style={{ aspectRatio: "600 / 400" }}
-                    >
-                      {schematicFrame}
-                    </div>
-                  </div>
-
-                  {/* Empty state — camera ready, waiting for hardware capture workflow */}
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3">
-                    <span className="font-mono text-[11px] tracking-[0.3em] text-slate-400 uppercase font-bold">
-                      Camera Ready
-                    </span>
-                    <span className="font-mono text-[9px] text-slate-600">
-                      Place the PCB under the inspection camera
-                    </span>
-                    <Button
-                      variant="primary"
-                      className="flex items-center gap-1.5 py-1 px-2.5"
-                      onClick={handleStartInspection}
-                      disabled={!cameraConnected}
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                      START INSPECTION
-                    </Button>
-                    <span className="font-mono text-[8px] uppercase tracking-widest text-slate-700">
-                      Captures one PCB image
-                    </span>
-                    {notice && (
-                      <span className="mt-1 max-w-[80%] text-center font-mono text-[9px] leading-relaxed text-warning">
-                        {notice}
-                      </span>
+                    {capturedImageUrl ? (
+                      <img
+                        src={capturedImageUrl}
+                        alt="PCB captured by Raspberry Pi camera"
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <div
+                        className="relative w-full max-h-full overflow-hidden"
+                        style={{ aspectRatio: "600 / 400" }}
+                      >
+                        {schematicFrame}
+                      </div>
                     )}
                   </div>
+
+                  {!capturedImageUrl && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3">
+                      <span className="font-mono text-[11px] tracking-[0.3em] text-slate-400 uppercase font-bold">
+                        Camera Ready
+                      </span>
+
+                      <span className="font-mono text-[9px] text-slate-400">
+                        Place the PCB under the inspection camera
+                      </span>
+                    </div>
+                  )}
+
+                  {isCapturing && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60">
+                      <div className="flex flex-col items-center gap-3">
+                        <RefreshCw className="h-7 w-7 animate-spin text-accent" />
+                        <span className="font-mono text-xs uppercase tracking-widest text-white">
+                          Capturing Image...
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
-
+                
               {/* Bottom Diagnostics Tag */}
               <div className="absolute bottom-3 left-3 z-[20] flex items-center gap-2 bg-[#050816]/90 border border-accent/15 px-3 py-1.5 rounded font-mono text-[9px] shadow-lg">
                 <span className="text-[#9ca3af]">CAMERA STATUS:</span>

@@ -107,3 +107,28 @@ async def create_rpi_template(
     finally:
         for image_file in opened_files:
             image_file.close()
+
+async def capture_rpi_image() -> bytes:
+    """Capture an image using the Raspberry Pi camera and return its bytes."""
+    if not RPI_BASE_URL:
+        raise RuntimeError("Raspberry Pi address is not configured.")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{RPI_BASE_URL}/camera/capture"
+            )
+            response.raise_for_status()
+
+            content_type = response.headers.get("content-type", "")
+            if not content_type.startswith("image/"):
+                raise RuntimeError(
+                    "Raspberry Pi did not return an image."
+                )
+
+            return response.content
+
+    except httpx.HTTPError as exc:
+        raise RuntimeError(
+            f"Raspberry Pi image capture failed: {exc}"
+        ) from exc
