@@ -25,6 +25,9 @@ import { NotificationProvider } from "./context/NotificationContext";
 // Camera Status
 import { CameraStatusProvider } from "./context/CameraStatusContext";
 
+// Dashboard
+import { DashboardProvider } from "./context/DashboardContext";
+
 // Hooks
 import useSmoothScroll from "./hooks/useSmoothScroll";
 
@@ -66,7 +69,9 @@ function AppShellWithAuth() {
     <AuthProvider>
       <NotificationProvider>
         <CameraStatusProvider>
-          <AppShell />
+          <DashboardProvider>
+            <AppShell />
+          </DashboardProvider>
         </CameraStatusProvider>
       </NotificationProvider>
     </AuthProvider>

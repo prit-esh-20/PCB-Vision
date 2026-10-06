@@ -145,7 +145,7 @@ const CAMERA_BADGE = {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { stats } = useDashboard();
+  const { stats, hasLoadedOnce } = useDashboard();
   const { items, notify, markAllAsRead } = useNotifications();
 
   const {
@@ -1140,7 +1140,7 @@ export default function DashboardPage() {
               </GlassCard>
             ))}
           </motion.div>
-        ) : (
+        ) : !hasLoadedOnce ? (
           <motion.div
             variants={itemVariants}
             className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
@@ -1149,7 +1149,7 @@ export default function DashboardPage() {
               <div key={i} className="skeleton-shimmer h-[92px] rounded-xl" />
             ))}
           </motion.div>
-        )}
+        ) : null}
 
 
         {/* ---- PRIMARY INSPECTION GRID: LIVE VIEWPORT + XAI ANALYSIS ---- */}

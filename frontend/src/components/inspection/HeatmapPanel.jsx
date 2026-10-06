@@ -186,22 +186,14 @@ export default function HeatmapPanel({
       </div>
 
       {/* IMAGE */}
-      <div className="relative h-64 rounded-lg border border-accent/5 bg-black/90 overflow-hidden">
-
-        <div
-          className="absolute inset-0 opacity-20 pointer-events-none"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(50,213,131,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(50,213,131,0.05) 1px, transparent 1px)",
-            backgroundSize: "20px 20px",
-          }}
-        />
+      <div className="relative h-80 bg-black/90 overflow-hidden flex items-center justify-center">
 
         <img
           src={currentView.url}
           alt={currentView.label}
-          className="absolute inset-0 h-full w-full object-contain"
+          className="block max-h-full max-w-full w-full h-full object-contain"
         />
+
       </div>
 
       {/* LEGEND */}
@@ -252,9 +244,9 @@ export default function HeatmapPanel({
             </span>
 
             <p className="text-white font-bold mt-1">
-              {xai?.target_class ??
-                xai?.targetClass ??
-                "—"}
+              {xai?.class_name ??
+                xai?.className ??
+                (xai?.class_id != null ? "Class " + xai.class_id : "—")}
             </p>
           </div>
 
