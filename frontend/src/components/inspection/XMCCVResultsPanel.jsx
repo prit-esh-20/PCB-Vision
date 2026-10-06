@@ -1,15 +1,7 @@
-import {
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  GitBranch,
-} from "lucide-react";
+import { CheckCircle, XCircle, AlertTriangle, GitBranch } from "lucide-react";
 import GlassCard from "../cards/GlassCard";
 
-export default function XMCCVResultsPanel({
-  inspection,
-  className = "",
-}) {
+export default function XMCCVResultsPanel({ inspection, className = "" }) {
   if (!inspection) {
     return (
       <GlassCard
@@ -45,9 +37,7 @@ export default function XMCCVResultsPanel({
    */
   const data = inspection?.inspection || inspection;
 
-  const xmccv = Array.isArray(data?.xmccv)
-    ? data.xmccv
-    : [];
+  const xmccv = Array.isArray(data?.xmccv) ? data.xmccv : [];
 
   if (xmccv.length === 0) {
     return (
@@ -89,22 +79,21 @@ export default function XMCCVResultsPanel({
    * and:
    *   { pass: true }
    */
-  const getPass = (value) => {
+  const getPassState = (value) => {
+    if (value === null || value === undefined) return "na";
+
     if (typeof value === "boolean") {
-      return value;
+      return value ? "pass" : "fail";
     }
 
-    if (value && typeof value === "object") {
-      if (typeof value.pass === "boolean") {
-        return value.pass;
-      }
-
-      if (typeof value.status === "string") {
-        return value.status.toUpperCase() === "PASS";
+    if (typeof value === "object") {
+      if ("pass" in value) return value.pass ? "pass" : "fail";
+      if ("status" in value) {
+        return value.status === "PASS" ? "pass" : "fail";
       }
     }
 
-    return Boolean(value);
+    return Boolean(value) ? "pass" : "fail";
   };
 
   const parameterRows = [
@@ -142,8 +131,8 @@ export default function XMCCVResultsPanel({
     },
   ];
 
-  const overallPass = xmccv.every((component) =>
-    getPass(component?.component_pass)
+  const overallPass = xmccv.every(
+    (component) => getPassState(component?.component_pass) === "pass",
   );
 
   return (
@@ -173,9 +162,8 @@ export default function XMCCVResultsPanel({
       {/* COMPONENT RESULTS */}
       <div className="flex-1 overflow-auto mt-3 space-y-4">
         {xmccv.map((component, componentIndex) => {
-          const componentPass = getPass(
-            component?.component_pass
-          );
+          const componentPass =
+            getPassState(component?.component_pass) === "pass";
 
           return (
             <div
@@ -190,16 +178,13 @@ export default function XMCCVResultsPanel({
                   </p>
 
                   <p className="font-mono text-[11px] font-bold text-white mt-0.5">
-                    {component?.class_name ||
-                      `Component ${componentIndex + 1}`}
+                    {component?.class_name || `Component ${componentIndex + 1}`}
                   </p>
                 </div>
 
                 <div
                   className={`flex items-center gap-1.5 font-mono text-[9px] font-bold ${
-                    componentPass
-                      ? "text-success"
-                      : "text-danger"
+                    componentPass ? "text-success" : "text-danger"
                   }`}
                 >
                   {componentPass ? (
@@ -215,9 +200,7 @@ export default function XMCCVResultsPanel({
               {/* ALL X-MCCV PARAMETERS */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {parameterRows.map((parameter) => {
-                  const passed = getPass(
-                    component?.[parameter.key]
-                  );
+                  const passState = getPassState(component?.[parameter.key]);
 
                   return (
                     <div
@@ -230,18 +213,26 @@ export default function XMCCVResultsPanel({
 
                       <span
                         className={`flex items-center gap-1 font-mono text-[9px] font-bold ${
-                          passed
+                          passState === "pass"
                             ? "text-success"
-                            : "text-danger"
+                            : passState === "fail"
+                              ? "text-danger"
+                              : "text-slate-500"
                         }`}
                       >
-                        {passed ? (
+                        {passState === "pass" ? (
                           <CheckCircle className="w-3 h-3" />
-                        ) : (
+                        ) : passState === "fail" ? (
                           <XCircle className="w-3 h-3" />
+                        ) : (
+                          <AlertTriangle className="w-3 h-3" />
                         )}
 
-                        {passed ? "PASS" : "FAIL"}
+                        {passState === "pass"
+                          ? "PASS"
+                          : passState === "fail"
+                            ? "FAIL"
+                            : "N/A"}
                       </span>
                     </div>
                   );
@@ -257,9 +248,7 @@ export default function XMCCVResultsPanel({
 
                   <span
                     className={`font-mono text-[9px] font-bold ${
-                      componentPass
-                        ? "text-success"
-                        : "text-danger"
+                      componentPass ? "text-success" : "text-danger"
                     }`}
                   >
                     {componentPass ? "PASS" : "FAIL"}

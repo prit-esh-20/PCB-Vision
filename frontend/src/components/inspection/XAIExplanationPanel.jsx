@@ -48,27 +48,78 @@ export default function XAIExplanationPanel({
   const xaiData = xai || inspection?.xai || {};
 
   const explanation =
-    xaiData.explanation ||
-    xaiData.class_name ||
-    inspection?.xai_explanation ||
-    "";
+    typeof xaiData.explanation === "string"
+      ? xaiData.explanation
+      : typeof xaiData.class_name === "string"
+        ? xaiData.class_name
+        : typeof inspection?.xai_explanation === "string"
+          ? inspection.xai_explanation
+          : "";
 
   const defect =
-    xaiData.defect ||
-    inspection?.defect_class ||
-    "";
+    typeof xaiData.defect === "string"
+      ? xaiData.defect
+      : "";
 
   const location =
-    xaiData.location ||
-    "";
+    typeof xaiData.location === "string"
+      ? xaiData.location
+      : "";
 
   const recommendation =
-    xaiData.recommendation ||
-    "";
+    typeof xaiData.recommendation === "string"
+      ? xaiData.recommendation
+      : "";
 
-  const missingComponents =
-    xaiData.missing_components ||
-    [];
+  /*
+   * XAI missing_components may contain either:
+   *
+   *   ["ESP32"]
+   *
+   * or complete X-MCCV component objects:
+   *
+   *   {
+   *     reference_id,
+   *     class_name,
+   *     presence,
+   *     ...
+   *   }
+   *
+   * Never pass an object directly to React.
+   */
+  const rawMissingComponents =
+    Array.isArray(xaiData.missing_components)
+      ? xaiData.missing_components
+      : [];
+
+  const missingComponents = rawMissingComponents
+    .map((comp) => {
+      if (typeof comp === "string") {
+        return comp;
+      }
+
+      if (comp && typeof comp === "object") {
+        if (
+          typeof comp.class_name === "string" &&
+          typeof comp.reference_id === "string"
+        ) {
+          return `${comp.class_name} (${comp.reference_id})`;
+        }
+
+        if (typeof comp.class_name === "string") {
+          return comp.class_name;
+        }
+
+        if (typeof comp.reason === "string") {
+          return comp.reason;
+        }
+
+        return "Missing component";
+      }
+
+      return String(comp);
+    })
+    .filter(Boolean);
 
   const overlayUrl =
     xaiVisualUrl ||
@@ -78,47 +129,49 @@ export default function XAIExplanationPanel({
     null;
 
   const mode =
-    xaiData.mode ||
-    "unknown";
+    typeof xaiData.mode === "string"
+      ? xaiData.mode
+      : "unknown";
 
   const xaiStatus =
-    xaiData.status ||
-    "pending";
+    typeof xaiData.status === "string"
+      ? xaiData.status
+      : "pending";
 
   const whatWrong = isNotPcb
     ? "The uploaded image could not be identified as a valid PCB."
     : isInspected && !isPass
-    ? defect || "Defect detected. XAI analysis is pending."
-    : isInspected && isPass
-    ? "No significant visual defect detected. Board passed inspection."
-    : isMlPending
-    ? "ML inspection model has not been integrated yet."
-    : explanation || "XAI analysis not available.";
+      ? defect || "Defect detected. XAI analysis is available."
+      : isInspected && isPass
+        ? "No significant visual defect detected. Board passed inspection."
+        : isMlPending
+          ? "ML inspection model has not been integrated yet."
+          : explanation || "XAI analysis not available.";
 
   const whyPass = isMlPending
     ? "The ML inspection model has not been integrated yet. This PASS result is a temporary backend state."
     : isPass
-    ? explanation ||
-      "The inspected component regions and PCB layout appear consistent with the expected visual pattern."
-    : "";
+      ? explanation ||
+        "The inspected component regions and PCB layout appear consistent with the expected visual pattern."
+      : "";
 
   const where = location
     ? location
     : isInspected && !isPass
-    ? "Affected region identified by detection bounding boxes."
-    : isMlPending
-    ? "Defect location will be available after ML inspection is integrated."
-    : "The backend has not provided the affected region yet.";
+      ? "Affected region identified by detection bounding boxes."
+      : isMlPending
+        ? "Defect location will be available after ML inspection is integrated."
+        : "The backend has not provided the affected region yet.";
 
   const fix =
     isInspected && !isPass
       ? recommendation ||
         "Inspect the highlighted region and rerun the inspection. Refer to X-MCCV verification for component-level details."
       : isMlPending
-      ? "No corrective action is available yet. ML-based defect detection will provide the actual recommendation."
-      : isPass
-      ? "No corrective action required. Board can proceed to the next stage."
-      : "Corrective action details are not available from the backend yet.";
+        ? "No corrective action is available yet. ML-based defect detection will provide the actual recommendation."
+        : isPass
+          ? "No corrective action required. Board can proceed to the next stage."
+          : "Corrective action details are not available from the backend yet.";
 
   return (
     <GlassCard
@@ -247,7 +300,8 @@ export default function XAIExplanationPanel({
               ) : (
                 <div className="relative w-full h-[220px] rounded-lg bg-black/90 overflow-hidden">
                   <span className="absolute inset-0 flex items-center justify-center px-4 text-center font-mono text-[9px] text-slate-600">
-                    {xaiStatus === "completed"
+                    {xaiStatus === "completed" ||
+                    xaiStatus === "success"
                       ? "No visualization available"
                       : "Awaiting XAI pipeline integration"}
                   </span>
