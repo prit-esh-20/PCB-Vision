@@ -20,7 +20,6 @@ import { useExport } from "../../hooks/useExport";
 import { useSnapshot } from "../../hooks/useSnapshot";
 import { useXAI } from "../../hooks/useXAI";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
-import { useRpiStatus } from "../../hooks/useRpiStatus";
 import { useInspectionHistory } from "../../hooks/useInspectionHistory";
 import { formatConfidence, getBboxStyle } from "../../utils/formatters";
 import { TREND_7_DAYS } from "../../services/mock/mockData";
@@ -178,7 +177,7 @@ export default function DashboardPage() {
   const { clear: clearXai } = useXAI();
 
   const { cameraStatus } = useCameraStatus();
-  const { rpiStatus } = useRpiStatus();
+  const rpiStatus = cameraStatus.rpiStatus;
 
   const { records: recentInspections, loading: historyLoading } = useInspectionHistory({
     page: 1,

@@ -22,6 +22,9 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 // Notifications
 import { NotificationProvider } from "./context/NotificationContext";
 
+// Camera Status
+import { CameraStatusProvider } from "./context/CameraStatusContext";
+
 // Hooks
 import useSmoothScroll from "./hooks/useSmoothScroll";
 
@@ -62,7 +65,9 @@ function AppShellWithAuth() {
   return (
     <AuthProvider>
       <NotificationProvider>
-        <AppShell />
+        <CameraStatusProvider>
+          <AppShell />
+        </CameraStatusProvider>
       </NotificationProvider>
     </AuthProvider>
   );
