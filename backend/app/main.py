@@ -1882,11 +1882,8 @@ def get_dashboard_stats(
             if str(inspection.status).upper() == "FAIL"
         )
 
-        inspected = sum(
-    1
-            for inspection in inspections
-            if inspection.inspection_time is not None
-        )
+        # Inspected = total completed inspections (PASS + FAIL)
+        inspected = passed + failed
 
         pass_rate = (
             round((passed / inspected) * 100, 1)
@@ -2003,14 +2000,32 @@ async def run_inspection(
         # 2. Extract Pi inspection result
         # ---------------------------------------------------------
         pi_inspection_id = inspection_data.get("inspection_id")
-        status = inspection_data.get("status", "FAIL")
+        decision = inspection_data.get("decision", {})
+
+        # Determine status: prefer decision.overall_status, fall back to inspection.status
+        status = (
+            decision.get("overall_status")
+            or decision.get("status")
+            or inspection_data.get("status")
+            or "FAIL"
+        )
+
         input_type = inspection_data.get("input_type", "camera")
         image_path = inspection_data.get("image_path")
         detection_image = inspection_data.get("detection_image")
 
+        # Extract inspection time from Pi response (multiple possible field names)
+        inspection_time = (
+            inspection_data.get("inspection_time")
+            or inspection_data.get("inspectionTime")
+            or inspection_data.get("processing_time")
+            or inspection_data.get("processingTime")
+            or inspection_data.get("cycle_time")
+            or inspection_data.get("cycleTime")
+        )
+
         detections = inspection_data.get("detections", [])
         xmccv_results = inspection_data.get("xmccv", [])
-        decision = inspection_data.get("decision", {})
         xai_result = inspection_data.get("xai", {})
 
         # ---------------------------------------------------------
@@ -2088,7 +2103,7 @@ async def run_inspection(
             status=status,
             confidence=highest_confidence,
             defect_class=defect_class,
-            inspection_time=None,
+            inspection_time=inspection_time,
             xai_explanation=str(xai_explanation),
         )
 
