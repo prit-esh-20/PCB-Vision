@@ -31,7 +31,6 @@ export const uploadApi = {
   async createTemplate({
     templateName,
     expectedImages,
-    referenceImages,
   }) {
     if (API_CONFIG.useMock) {
       throw new Error(
@@ -39,33 +38,38 @@ export const uploadApi = {
       );
     }
 
-    if (!templateName.trim()) {
+    if (!templateName?.trim()) {
       throw new Error("Please enter a template name.");
     }
 
-    if (
-      !referenceImages?.length ||
-      referenceImages.length !== Number(expectedImages)
-    ) {
+    const imageCount = Number(expectedImages);
+
+    if (![4, 5].includes(imageCount)) {
       throw new Error(
-        "The selected image count must match the expected image count."
+        "Reference image count must be 4 or 5."
       );
     }
 
     const formData = new FormData();
-    formData.append("template_name", templateName.trim());
-    formData.append("expected_images", String(expectedImages));
 
-    referenceImages.forEach((file) => {
-      formData.append("reference_images", file);
-    });
+    formData.append(
+      "template_name",
+      templateName.trim()
+    );
+
+    formData.append(
+      "expected_images",
+      String(imageCount)
+    );
 
     const { data } = await apiClient.post(
-      "/template/create",
+      "/templates/create",
       formData,
       {
-        headers: { "Content-Type": "multipart/form-data" },
-        timeout: 60000,
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 180000,
       }
     );
 

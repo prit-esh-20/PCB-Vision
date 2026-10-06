@@ -318,11 +318,14 @@ export default function LiveInspectionPage() {
   const handleStartInspection = async () => {
     if (isCapturing) return;
 
-    setIsCapturing(true);
-    setNotice("Running inspection on Raspberry Pi...");
+    setInspection(null);
     setSelectedDetection(null);
+    setNotice("Running inspection on Raspberry Pi...");
+    setIsCapturing(true);
 
     try {
+      sessionStorage.removeItem(INSPECTION_STORAGE_KEY);
+
       /*
        * DO NOT use browser camera capture here.
        *

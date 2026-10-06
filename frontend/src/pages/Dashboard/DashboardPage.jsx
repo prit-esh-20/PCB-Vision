@@ -195,8 +195,7 @@ export default function DashboardPage() {
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [actionStatus, setActionStatus] = useState(null);
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
-  const [templateImageCount, setTemplateImageCount] = useState(1);
-  const [templateReferenceImages, setTemplateReferenceImages] = useState([]);
+  const [templateImageCount, setTemplateImageCount] = useState(4);
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   const [templateModalMessage, setTemplateModalMessage] = useState("");
   const [templateName, setTemplateName] = useState("");
@@ -885,7 +884,7 @@ export default function DashboardPage() {
                 whileHover={{ scale: 1.03, y: -2 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => {
-                  setTemplateImageCount(1);
+                  setTemplateImageCount(4);
                   setTemplateModalMessage("");
                   setShowCreateTemplateModal(true);
                 }}
@@ -1954,13 +1953,20 @@ export default function DashboardPage() {
       )}
       <Modal
         isOpen={showCreateTemplateModal}
-        onClose={() => setShowCreateTemplateModal(false)}
+        onClose={() => {
+          if (isCreatingTemplate) return;
+
+          setShowCreateTemplateModal(false);
+          setTemplateModalMessage("");
+        }}
         title="Create New Template"
       >
         <div className="space-y-5">
           <p className="text-sm text-slate-300">
-            Capture reference images to create a PCB component template.
+            Create a PCB component template using the Raspberry Pi camera.
           </p>
+
+          {/* TEMPLATE NAME */}
           <div className="space-y-2">
             <label
               htmlFor="template-name"
@@ -1968,15 +1974,19 @@ export default function DashboardPage() {
             >
               Template Name
             </label>
+
             <input
               id="template-name"
               type="text"
               value={templateName}
               onChange={(e) => setTemplateName(e.target.value)}
               placeholder="Enter template name"
-              className="w-full rounded-lg border border-accent/20 bg-white/[0.02] px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-accent/40 focus:ring-2 focus:ring-accent/15 transition-all"
+              disabled={isCreatingTemplate}
+              className="w-full rounded-lg border border-accent/20 bg-white/[0.02] px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-accent/40 focus:ring-2 focus:ring-accent/15 transition-all disabled:opacity-50"
             />
           </div>
+
+          {/* REFERENCE IMAGE COUNT */}
           <div className="space-y-2">
             <label
               htmlFor="template-image-count"
@@ -1984,115 +1994,127 @@ export default function DashboardPage() {
             >
               Number of Reference Images
             </label>
+
             <input
               id="template-image-count"
               type="number"
-              min="1"
+              min="4"
+              max="5"
               value={templateImageCount}
               onChange={(e) => {
                 const val = parseInt(e.target.value, 10);
-                if (!isNaN(val) && val >= 1) {
+
+                if (!isNaN(val) && val >= 4 && val <= 5) {
                   setTemplateImageCount(val);
                 }
               }}
-              className="w-full rounded-lg border border-accent/20 bg-white/[0.02] px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-accent/40 focus:ring-2 focus:ring-accent/15 transition-all"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="template-reference-images"
-              className="block font-mono text-[10px] uppercase tracking-wider text-slate-400"
-            >
-              Select Reference Images
-            </label>
-
-            <input
-              id="template-reference-images"
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-              multiple
-              onChange={(e) => {
-                const files = Array.from(e.target.files || []);
-                setTemplateReferenceImages(files);
-                setTemplateImageCount(files.length || 1);
-                e.target.value = "";
-                setTemplateModalMessage("");
-              }}
-              className="block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-accent/15 file:px-3 file:py-2 file:text-accent"
+              disabled={isCreatingTemplate}
+              className="w-full rounded-lg border border-accent/20 bg-white/[0.02] px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-accent/40 focus:ring-2 focus:ring-accent/15 transition-all disabled:opacity-50"
             />
 
             <p className="text-xs text-slate-400">
-              Selected: {templateReferenceImages.length} image(s)
+              The Raspberry Pi camera will capture{" "}
+              <span className="font-semibold text-accent">
+                {templateImageCount}
+              </span>{" "}
+              reference images automatically.
             </p>
           </div>
 
+          {/* CAMERA INFORMATION */}
+          <div className="rounded-lg border border-accent/10 bg-accent/[0.03] px-4 py-3">
+            <div className="flex items-start gap-3">
+              <Camera className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+
+              <div>
+                <p className="text-xs font-semibold text-slate-300">
+                  Raspberry Pi Camera
+                </p>
+
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  When you continue, the Raspberry Pi will capture the selected
+                  number of reference images and use them to build the template.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* MESSAGE */}
           {templateModalMessage && (
-            <p className="text-sm text-accent font-mono">
+            <p
+              className={`text-sm font-mono ${
+                templateModalMessage.toLowerCase().includes("failed") ||
+                templateModalMessage.toLowerCase().includes("please") ||
+                templateModalMessage.toLowerCase().includes("must")
+                  ? "text-danger"
+                  : "text-accent"
+              }`}
+            >
               {templateModalMessage}
             </p>
           )}
 
+          {/* ACTIONS */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-accent/10">
+            {/* CANCEL */}
             <button
               onClick={() => {
                 setShowCreateTemplateModal(false);
                 setTemplateModalMessage("");
                 setTemplateName("");
-                setTemplateReferenceImages([]);
-                setTemplateImageCount(1);
+                setTemplateImageCount(4);
               }}
               disabled={isCreatingTemplate}
               className="inline-flex items-center gap-2 rounded-lg border border-accent/20 bg-white/[0.03] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-white/80 transition-all hover:border-accent/40 hover:bg-accent/5 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
+
+            {/* CREATE */}
             <button
               onClick={async () => {
                 if (!templateName.trim()) {
-                  setTemplateModalMessage("Please enter a template name.");
-                  return;
-                }
-                if (!templateReferenceImages.length) {
                   setTemplateModalMessage(
-                    "Please select at least one reference image.",
+                    "Please enter a template name.",
                   );
                   return;
                 }
-                if (templateReferenceImages.length !== templateImageCount) {
+
+                if (templateImageCount < 4 || templateImageCount > 5) {
                   setTemplateModalMessage(
-                    `Image count mismatch: expected ${templateImageCount}, selected ${templateReferenceImages.length}.`,
+                    "Reference image count must be between 4 and 5.",
                   );
                   return;
                 }
 
                 setIsCreatingTemplate(true);
-                setTemplateModalMessage("");
+                setTemplateModalMessage(
+                  `Preparing to capture ${templateImageCount} reference images...`,
+                );
 
                 try {
                   const result = await uploadApi.createTemplate({
                     templateName,
                     expectedImages: templateImageCount,
-                    referenceImages: templateReferenceImages,
                   });
 
                   setTemplateModalMessage(
-                    `Template "${templateName}" created successfully! (ID: ${result.template_id})`,
+                    `Template "${templateName}" created successfully!`,
                   );
 
                   // Clear form on success
                   setTemplateName("");
-                  setTemplateReferenceImages([]);
-                  setTemplateImageCount(1);
+                  setTemplateImageCount(4);
 
-                  // Close modal after a short delay to show success message
+                  // Close modal after showing success
                   setTimeout(() => {
                     setShowCreateTemplateModal(false);
                     setTemplateModalMessage("");
                   }, 2000);
+
                 } catch (err) {
                   setTemplateModalMessage(
-                    err.message ||
+                    err?.message ||
                     "Template creation failed. Please try again.",
                   );
                 } finally {
@@ -2105,10 +2127,13 @@ export default function DashboardPage() {
               {isCreatingTemplate ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Creating...
+                  Capturing...
                 </>
               ) : (
-                "Continue"
+                <>
+                  <Camera className="h-3.5 w-3.5" />
+                  Continue
+                </>
               )}
             </button>
           </div>
