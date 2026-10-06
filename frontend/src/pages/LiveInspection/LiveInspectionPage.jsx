@@ -19,6 +19,29 @@ import HeatmapPanel from "../../components/inspection/HeatmapPanel";
 import ODCResultsPanel from "../../components/inspection/ODCResultsPanel";
 import InspectionDecisionPanel from "../../components/inspection/InspectionDecisionPanel";
 
+const INSPECTION_STORAGE_KEY = "pcbvision:lastSuccessfulInspection";
+
+function loadSavedInspection() {
+  try {
+    const saved = sessionStorage.getItem(INSPECTION_STORAGE_KEY);
+
+    return saved ? JSON.parse(saved) : null;
+  } catch (error) {
+    console.error("Unable to restore saved inspection:", error);
+    return null;
+  }
+}
+
+function saveInspectionResult(inspection) {
+  try {
+    sessionStorage.setItem(
+      INSPECTION_STORAGE_KEY,
+      JSON.stringify(inspection)
+    );
+  } catch (error) {
+    console.error("Unable to save inspection result:", error);
+  }
+}
 
 function normalizeInspectionResponse(response) {
   const result = response?.data ?? response ?? {};
@@ -289,7 +312,7 @@ export default function LiveInspectionPage() {
 
   const [notice, setNotice] = useState("");
   const [isCapturing, setIsCapturing] = useState(false);
-  const [inspection, setInspection] = useState(null);
+  const [inspection, setInspection] = useState(loadSavedInspection);
   const [selectedDetection, setSelectedDetection] = useState(null);
 
   const handleStartInspection = async () => {
@@ -297,7 +320,6 @@ export default function LiveInspectionPage() {
 
     setIsCapturing(true);
     setNotice("Running inspection on Raspberry Pi...");
-    setInspection(null);
     setSelectedDetection(null);
 
     try {
@@ -326,10 +348,14 @@ export default function LiveInspectionPage() {
       }
 
       const normalizedInspection =
-        normalizeInspectionResponse(result);
+      normalizeInspectionResponse(result);
 
-      setInspection(normalizedInspection);
-      setNotice("Inspection completed.");
+    // Persist the exact normalized inspection response.
+    // No ML processing or decision logic is changed.
+    saveInspectionResult(normalizedInspection);
+    setInspection(normalizedInspection);
+
+    setNotice("Inspection completed.");
     } catch (error) {
       console.error(
         "PCB inspection failed:",
@@ -448,11 +474,11 @@ export default function LiveInspectionPage() {
             {inspection && (
               <div className="flex items-center gap-2 px-3 py-1 rounded-md border border-accent/15 bg-[#050816] font-mono text-[9px]">
                 <span className="text-slate-400">
-                  Board ID:
+                  Inspection ID:
                 </span>
 
                 <span className="text-white font-bold">
-                  {inspection.board_id || "—"}
+                  {inspection.inspection_id || inspection.inspectionId || "—"}
                 </span>
               </div>
             )}

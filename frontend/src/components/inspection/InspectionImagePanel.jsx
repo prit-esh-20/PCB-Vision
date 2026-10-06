@@ -264,7 +264,9 @@ export default function InspectionImagePanel({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-md border border-accent/10 bg-[#050816]/50">
-        <span className="font-mono text-[10px] text-slate-400">PCB ID: <span className="text-white">{inspection?.board_id ?? inspection?.pcbId ?? "—"}</span></span>
+        <span className="font-mono text-[10px] text-slate-400">
+          Inspection ID: <span className="text-white">{inspection?.inspection_id ?? inspection?.inspectionId ?? "—"}</span>
+        </span>
         <span className="font-mono text-[10px] text-slate-400">Detections: <span className="text-white">{detections.length}</span></span>
         <span className="font-mono text-[10px] text-slate-400">Status: <span className={`text-white ${inspection?.status === "PASS" ? "text-success" : inspection?.status === "FAIL" ? "text-danger" : ""}`}>{inspection?.status ?? "Awaiting inspection"}</span></span>
       </div>
