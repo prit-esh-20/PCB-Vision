@@ -23,9 +23,29 @@ export const cameraApi = {
       {},
       {
         responseType: "blob",
-      }
+        timeout: 60000,
+      },
     );
 
     return response.data;
   },
-};
+
+  async uploadCapturedImage(imageBlob) {
+    const imageFile = new File(
+      [imageBlob],
+      `pcb_capture_${Date.now()}.jpg`,
+      { type: "image/jpeg" }
+    );
+
+    const formData = new FormData();
+    formData.append("file", imageFile);
+
+    const response = await apiClient.post(
+      "/inspection/upload",
+      formData,
+      { timeout: 60000 }
+    );
+
+    return response.data;
+  },
+}

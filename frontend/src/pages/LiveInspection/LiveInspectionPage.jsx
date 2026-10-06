@@ -1,109 +1,151 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import AppLayout from "../../components/layout/AppLayout";
 import GlassCard from "../../components/cards/GlassCard";
 import Button from "../../components/common/Button";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
 import { cameraApi } from "../../services/api/cameraApi";
-import {
-  Camera,
-  Activity,
-  RefreshCw,
-  Eye,
-} from "lucide-react";
+import apiClient from "../../services/apiClient";
+import { Camera, Activity, RefreshCw, Eye, GitBranch, Thermometer, Brain, FileCheck, Shield, AlertTriangle, CheckCircle, XCircle, Loader2, Maximize } from "lucide-react";
+import InspectionImagePanel from "../../components/inspection/InspectionImagePanel";
+import XAIExplanationPanel from "../../components/inspection/XAIExplanationPanel";
+import XMCCVResultsPanel from "../../components/inspection/XMCCVResultsPanel";
+import HeatmapPanel from "../../components/inspection/HeatmapPanel";
+import ODCResultsPanel from "../../components/inspection/ODCResultsPanel";
+import InspectionDecisionPanel from "../../components/inspection/InspectionDecisionPanel";
 
 export default function LiveInspectionPage() {
   const { cameraStatus } = useCameraStatus();
-
   const cameraConnected = cameraStatus.connected;
   const cameraDisconnected = cameraStatus.status === "DISCONNECTED" || !cameraConnected;
 
-  const [notice, setNotice] = useState(null);
+  const [notice, setNotice] = useState("");
   const [capturedImageUrl, setCapturedImageUrl] = useState(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [inspection, setInspection] = useState(null);
+  const [selectedDetection, setSelectedDetection] = useState(null);
+  const [imageDims, setImageDims] = useState(null);
+  const [showFullscreenImage, setShowFullscreenImage] = useState(false);
+  const imageRef = useRef(null);
 
   useEffect(() => {
     return () => {
-      if (capturedImageUrl) {
-        URL.revokeObjectURL(capturedImageUrl);
-      }
+      if (capturedImageUrl) URL.revokeObjectURL(capturedImageUrl);
     };
   }, [capturedImageUrl]);
 
+  const handleImageLoad = (e) => {
+    const { naturalWidth, naturalHeight } = e.currentTarget;
+    if (naturalWidth && naturalHeight) {
+      setImageDims({ width: naturalWidth, height: naturalHeight });
+    }
+  };
+
   const handleStartInspection = async () => {
-    if (!cameraConnected || isCapturing) return;
+    if (isCapturing) return;
 
     setIsCapturing(true);
-    setNotice("Capturing image from Raspberry Pi...");
+    setNotice("Running inspection on Raspberry Pi...");
+    setInspection(null);
+    setSelectedDetection(null);
 
     try {
-      const imageBlob = await cameraApi.capture();
+      const response = await apiClient.post(
+        "/inspection/run",
+        {},
+        { timeout: 240000 }
+      );
 
-      if (!imageBlob || imageBlob.size === 0) {
-        throw new Error("The camera returned an empty image.");
+      const result = response.data;
+
+      if (result.status !== "success") {
+        throw new Error(
+          result.message || "Inspection failed."
+        );
       }
 
-      const newImageUrl = URL.createObjectURL(imageBlob);
-
-      setCapturedImageUrl(newImageUrl);
-      setNotice("Image captured successfully.");
+      setInspection(result);
+      setNotice("Inspection completed.");
     } catch (error) {
-      console.error("Camera capture failed:", error);
+      console.error("PCB inspection failed:", error);
 
-      setNotice(
-        error.response?.data?.detail ||
-          error.message ||
-          "Image capture failed. Check the Raspberry Pi connection."
-      );
+      const detail = error.response?.data?.detail;
+
+      let message =
+        error.response?.data?.message ||
+        error.message ||
+        "Inspection failed. Check the backend logs.";
+
+      if (typeof detail === "string") {
+        message = detail;
+      } else if (Array.isArray(detail)) {
+        message = detail
+          .map((item) =>
+            typeof item === "string"
+              ? item
+              : item?.msg || JSON.stringify(item)
+          )
+          .join("; ");
+      } else if (detail && typeof detail === "object") {
+        message = JSON.stringify(detail);
+      }
+
+      setNotice(message);
     } finally {
       setIsCapturing(false);
     }
   };
 
-  // Schematic PCB frame: a technical stand-in for the captured PCB area —
-  // never presented as a live camera feed.
-  const schematicFrame = (
-    <svg
-      className="relative z-[1] w-full h-full text-accent/20"
-      viewBox="0 0 600 400"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <rect x="10" y="10" width="580" height="380" rx="8" stroke="currentColor" strokeWidth="1" />
-      <circle cx="300" cy="200" r="50" stroke="currentColor" strokeWidth="1" />
-      <circle cx="150" cy="120" r="30" stroke="currentColor" strokeWidth="1" />
-      <rect x="420" y="80" width="80" height="80" rx="4" stroke="currentColor" strokeWidth="1" />
-      <path d="M10 200h580M300 10v380" stroke="currentColor" strokeWidth="0.5" strokeDasharray="4 4" />
-    </svg>
-  );
+
+  const handleDetectionClick = (detection) => {
+    setSelectedDetection(selectedDetection?.id === detection.id ? null : detection);
+  };
+
+  const isPass = inspection?.status === "PASS";
+  const isFail = inspection?.status === "FAIL";
+  const isNotPcb = inspection?.isPcb === false || String(inspection?.status || "").toUpperCase() === "NOT_PCB";
+  const isMlPending = inspection?.modelName === "Pending";
+  const isInspected = inspection?.status === "INSPECTED";
+  const xai = inspection?.xai || {};
+  const xaiVisualUrl = xai?.overlay_path || xai?.heatmap_path || xai?.visualization || null;
+  const scanPhase = isCapturing ? "horizontal" : "idle";
+  const scanning = isCapturing;
+
+  const uploadedImage = capturedImageUrl ? { url: capturedImageUrl, name: "Captured PCB" } : null;
+  const pcbImage = uploadedImage;
 
   return (
     <AppLayout>
-      {/* Main Console Workspace */}
-      <main className="flex-1 p-4 md:p-6 space-y-4 max-w-[1440px] w-full">
-        {/* Page title */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-accent/10 pb-3">
-          <div className="text-left">
+      <main className="flex-1 p-4 md:p-6 space-y-4 max-w-[1600px] w-full">
+        {/* ---- TOP INSPECTION HEADER ---- */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-accent/10 pb-3">
+          <div>
             <h1 className="font-display text-lg md:text-xl font-bold text-white uppercase tracking-wider">
-              PCB Inspection Panel
+              PCB Inspection
             </h1>
             <p className="font-mono text-[9px] text-accent/70 tracking-widest uppercase">
-              Single-Capture PCB Inspection
+              Detailed Inspection Workspace
             </p>
           </div>
 
-          {/* Quick controls */}
-          <div className="flex items-center gap-2">
-            <div
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md border font-display text-[9px] uppercase tracking-wider font-bold ${
-                cameraConnected
-                  ? "border-success/20 bg-success/5 text-success"
-                  : "border-danger/20 bg-danger/5 text-danger"
-              }`}
-            >
+          <div className="flex flex-wrap items-center gap-3">
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-md border font-display text-[9px] uppercase tracking-wider font-bold ${cameraConnected ? "border-success/20 bg-success/5 text-success" : "border-danger/20 bg-danger/5 text-danger"}`}>
               <Activity className="w-3.5 h-3.5" />
-              Camera Status:{" "}
-              {cameraConnected ? "Connected" : "Disconnected"}
+              Camera: {cameraConnected ? "Connected" : "Disconnected"}
             </div>
+
+            {inspection && (
+              <div className="flex items-center gap-2 px-3 py-1 rounded-md border border-accent/15 bg-[#050816] font-mono text-[9px]">
+                <span className="text-slate-400">Board ID:</span>
+                <span className="text-white font-bold">{inspection.board_id || inspection.pcbId || "—"}</span>
+              </div>
+            )}
+
+            {inspection && (
+              <span className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[9px] font-display font-bold uppercase tracking-wider ${isPass ? "border-success/30 bg-success/10 text-success" : isFail ? "border-danger/30 bg-danger/10 text-danger" : "border-warning/30 bg-warning/10 text-warning"}`}>
+                {isPass ? <CheckCircle className="h-3.5 w-3.5" /> : isFail ? <XCircle className="h-3.5 w-3.5" /> : <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {inspection.status || "PROCESSING"}
+              </span>
+            )}
 
             <Button
               variant="secondary"
@@ -111,179 +153,75 @@ export default function LiveInspectionPage() {
               onClick={handleStartInspection}
               disabled={!cameraConnected || isCapturing}
             >
-              <RefreshCw className="w-3.5 h-3.5" />
-                {isCapturing ? "CAPTURING..." : "START INSPECTION"}
+              <RefreshCw className={`w-3.5 h-3.5 ${isCapturing ? "animate-spin" : ""}`} />
+              {isCapturing ? "INSPECTING..." : "START INSPECTION"}
             </Button>
           </div>
         </div>
 
-        {/* Inspection area */}
-        <div className="grid grid-cols-1 xl:grid-cols-[3fr_1fr] gap-5 items-start">
-          {/* SINGLE IMAGE CAPTURE VIEW - Left panel */}
-          <GlassCard className="flex flex-col" hoverLift={false}>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-accent/5 pb-2.5">
-              <div className="flex items-center gap-2">
-                <Camera className="w-4 h-4 text-accent" />
-                <span className="font-display text-[10px] tracking-widest text-[#9ca3af] uppercase font-bold">
-                  PCB Capture / Inspection View
-                </span>
-              </div>
-              <span className="rounded border border-accent/15 bg-[#050816] px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest text-accent">
-                Single Capture
-              </span>
-            </div>
+        {notice && (
+          <div className={`p-3 rounded-lg border ${isCapturing ? "border-warning/30 bg-warning/5" : isFail ? "border-danger/30 bg-danger/5" : isPass ? "border-success/30 bg-success/5" : "border-accent/10 bg-[#050816]/50"}`}>
+            <p className="font-mono text-[10px] text-slate-300 break-words flex items-center gap-2">
+              {isCapturing && <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />}
+              {isFail && <AlertTriangle className="w-3.5 h-3.5 text-danger" />}
+              {isPass && <CheckCircle className="w-3.5 w-3.5 text-success" />}
+              {notice}
+            </p>
+          </div>
+        )}
 
-            {/* Viewport Frame */}
-            <div className="relative bg-black rounded-lg overflow-hidden border border-accent/5 my-2 w-full mx-auto flex items-center justify-center h-[340px] md:h-[430px] lg:h-[530px]">
-              {/* Electronics Schematic background grid */}
-              <div className="absolute inset-0 cyber-grid opacity-20" />
+        {/* ---- PRIMARY INSPECTION AREA (Two-Column: ~60% / ~40%) ---- */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.9fr)] gap-5 items-stretch">
+          {/* LEFT PANEL - Live PCB Inspection */}
+          <InspectionImagePanel
+            inspection={inspection}
+            pcbImage={pcbImage}
+            uploadedImage={uploadedImage}
+            imageDims={imageDims}
+            scanPhase={scanPhase}
+            scanning={scanning}
+            selectedDetection={selectedDetection}
+            onDetectionClick={handleDetectionClick}
+            showAnnotations={true}
+          />
 
-              {cameraDisconnected ? (
-                <div className="relative z-10 flex flex-col items-center justify-center gap-3 text-center p-6">
-                  <div className="p-4 rounded-full bg-danger/10 border border-danger/20 text-danger mb-1">
-                    <Camera className="w-8 h-8 md:w-10 md:h-10" />
-                  </div>
-                  <h3 className="font-display text-base md:text-lg font-bold text-danger uppercase tracking-wider">
-                    CAMERA DISCONNECTED
-                  </h3>
-                  <p className="font-mono text-xs md:text-sm text-slate-400 max-w-sm">
-                    Connect the inspection camera to begin PCB capture.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div className="relative z-0 flex h-full w-full items-center justify-center">
-                    {capturedImageUrl ? (
-                      <img
-                        src={capturedImageUrl}
-                        alt="PCB captured by Raspberry Pi camera"
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <div
-                        className="relative w-full max-h-full overflow-hidden"
-                        style={{ aspectRatio: "600 / 400" }}
-                      >
-                        {schematicFrame}
-                      </div>
-                    )}
-                  </div>
+          {/* RIGHT PANEL - XAI Inspection Summary */}
+          <XAIExplanationPanel
+            inspection={inspection}
+            xai={xai}
+            isPass={isPass}
+            isNotPcb={isNotPcb}
+            isMlPending={isMlPending}
+            isInspected={isInspected}
+            xaiVisualUrl={xaiVisualUrl}
+          />
+        </div>
 
-                  {!capturedImageUrl && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3">
-                      <span className="font-mono text-[11px] tracking-[0.3em] text-slate-400 uppercase font-bold">
-                        Camera Ready
-                      </span>
+        {/* ---- SECONDARY RESULTS GRID (2x2 equal columns) ---- */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
+          {/* 1. MCCV / X-MCCV Verification Panel */}
+          <XMCCVResultsPanel
+            inspection={inspection}
+          />
 
-                      <span className="font-mono text-[9px] text-slate-400">
-                        Place the PCB under the inspection camera
-                      </span>
-                    </div>
-                  )}
+          {/* 2. Heatmap Visualization Panel */}
+          <HeatmapPanel
+            inspection={inspection}
+          />
 
-                  {isCapturing && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60">
-                      <div className="flex flex-col items-center gap-3">
-                        <RefreshCw className="h-7 w-7 animate-spin text-accent" />
-                        <span className="font-mono text-xs uppercase tracking-widest text-white">
-                          Capturing Image...
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-                
-              {/* Bottom Diagnostics Tag */}
-              <div className="absolute bottom-3 left-3 z-[20] flex items-center gap-2 bg-[#050816]/90 border border-accent/15 px-3 py-1.5 rounded font-mono text-[9px] shadow-lg">
-                <span className="text-[#9ca3af]">CAMERA STATUS:</span>
-                <span
-                  className={`font-bold ${
-                    cameraConnected
-                      ? "text-success"
-                      : "text-danger"
-                  }`}
-                >
-                  {cameraConnected
-                    ? "READY"
-                    : "DISCONNECTED"}
-                </span>
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${cameraConnected ? "bg-success led-slow" : "bg-danger"}`}
-                />
-              </div>
-            </div>
+          {/* 3. ODC Results Panel */}
+          <ODCResultsPanel
+            inspection={inspection}
+          />
 
-            {/* Compact inspection status strip */}
-            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 px-3 py-2 rounded-md border border-accent/10 bg-[#050816]/50">
-              {/* Camera status */}
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    cameraConnected
-                      ? "bg-success led-slow"
-                      : "bg-danger"
-                  }`}
-                />
-                <span
-                  className={`font-mono text-[9px] tracking-widest uppercase font-bold ${
-                    cameraConnected
-                      ? "text-success"
-                      : "text-danger"
-                  }`}
-                >
-                  {cameraConnected
-                    ? "Camera Ready"
-                    : "Camera Disconnected"}
-                </span>
-              </div>
-
-              <span className="hidden md:inline font-mono text-accent/25">
-                |
-              </span>
-
-              {/* PCB ID */}
-              <div className="flex items-center gap-1.5">
-                <span className="font-mono text-[9px] tracking-widest text-slate-500 uppercase font-bold">
-                  PCB ID
-                </span>
-                <span className="font-mono text-[10px] text-white font-bold tracking-wider">
-                  —
-                </span>
-              </div>
-
-              <span className="hidden md:inline font-mono text-accent/25">
-                |
-              </span>
-
-              {/* PASS/FAIL verdict */}
-              <span className="font-mono text-[9px] text-slate-600 uppercase tracking-widest">
-                No result
-              </span>
-            </div>
-          </GlassCard>
-
-          {/* XAI INSPECTION SUMMARY - Right panel */}
-          <GlassCard className="space-y-3" hoverLift={false}>
-            <div className="flex items-center gap-2 border-b border-accent/5 pb-2">
-              <Eye className="w-3.5 h-3.5 text-accent" />
-              <span className="font-display text-[10px] tracking-widest text-white uppercase font-bold">
-                XAI Inspection Summary
-              </span>
-            </div>
-
-            <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-              <span className="font-mono text-[10px] tracking-[0.3em] text-slate-400 uppercase font-bold">
-                XAI Analysis
-              </span>
-              <span className="font-mono text-[9px] text-slate-600">
-                Awaiting trained ML model and XAI pipeline.
-              </span>
-            </div>
-          </GlassCard>
+          {/* 4. Final Decision and Evidence Panel */}
+          <InspectionDecisionPanel
+            inspection={inspection}
+            onGenerateReport={() => {}}
+            onExport={() => {}}
+          />
         </div>
       </main>
     </AppLayout>
   );
 }
-

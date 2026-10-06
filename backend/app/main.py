@@ -5,16 +5,29 @@ import time
 import csv
 from io import StringIO
 from datetime import datetime, timezone, timedelta
+from app.rpi_client import (
+    check_rpi_connection,
+    check_rpi_camera_status,
+    capture_rpi_image,
+    create_rpi_template,
+    run_rpi_inspection,
+    run_rpi_uploaded_inspection,
+    make_rpi_image_url,
+)
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pathlib import Path
+from fastapi import HTTPException
 import uuid
 from template_models import TemplateSession
 from app.rpi_client import (
     check_rpi_connection,
     check_rpi_camera_status,
     capture_rpi_image,
+    create_rpi_template,
+    run_rpi_inspection,
+    run_rpi_uploaded_inspection,
 )
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, File, Depends, FastAPI, Query
@@ -174,6 +187,19 @@ async def create_template(
         "raspberry_pi_result": pi_result,
     }
 
+@app.get("/api/inspection/image")
+def get_inspection_image(path: str):
+    image_path = Path(path).resolve()
+    base_dir = Path("/home/pi4/PCBVISION").resolve()
+
+    if not image_path.is_relative_to(base_dir):
+        raise HTTPException(status_code=403, detail="Invalid image path")
+
+    if not image_path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    return FileResponse(image_path)
+
 @app.get("/api/health")
 def health_check():
     return {
@@ -200,7 +226,7 @@ def database_health(db: Session = Depends(get_db)):
         }
 
 class InspectionRequest(BaseModel):
-    uploadId: int
+    uploadId: int | None = None
 
 @app.post("/api/inspection/upload")
 async def upload_pcb(
@@ -363,18 +389,27 @@ def get_inspection_history(
         records.append({
             "id": inspection.id,
             "pcbId": inspection.board_id,
+            "board_id": inspection.board_id,
             "scanDateTime": inspection.created_at,
-            "targetModel": inspection.model_name,
+            "created_at": inspection.created_at,
+            "targetModel": inspection.model_name or "PCBVision YOLO11s",
+            "model_name": inspection.model_name,
             "status": inspection.status,
             "defectClass": inspection.defect_class or "None",
+            "defect_class": inspection.defect_class or "None",
             "yoloConfidence": inspection.confidence,
+            "confidence": inspection.confidence,
             "cycleTime": inspection.inspection_time,
+            "inspection_time": inspection.inspection_time,
+            "imagePath": f"/api/inspection/{inspection.id}/image" if inspection.image_path else None,
+            "image_name": inspection.image_name,
 
             # Fields not available in the current DB schema
             "operator": None,
             "componentsCount": None,
             "defectCoordinates": None,
             "gradCamExplanation": inspection.xai_explanation or "",
+            "xai_explanation": inspection.xai_explanation or "",
             "verificationDetails": None,
         })
 
@@ -1921,131 +1956,242 @@ async def capture_camera_image():
         ) from exc
 
 @app.post("/api/inspection/run")
-def run_inspection(
-    request: InspectionRequest,
+async def run_inspection(
+    request: InspectionRequest | None = None,
     db: Session = Depends(get_db)
 ):
-    inspection = (
-        db.query(Inspection)
-        .filter(Inspection.id == request.uploadId)
-        .first()
-    )
-
-    if not inspection:
-        return {
-            "status": "ERROR",
-            "message": "Inspection record not found"
-        }
-
-    # ---------------------------------------------------------
-    # Run trained YOLO model
-    # ---------------------------------------------------------
-
-    image_path = inspection.image_path
-
-    if not image_path:
-        return {
-            "status": "ERROR",
-            "message": "Inspection image path not found"
-        }
-
     try:
-        ml_result = inspect_pcb(image_path)
-    except Exception as exc:
-        return {
-            "status": "ERROR",
-            "message": f"ML inspection failed: {str(exc)}"
+        # ---------------------------------------------------------
+        # 1. Run the authoritative inspection on Raspberry Pi
+        # ---------------------------------------------------------
+        if request and request.uploadId:
+            uploaded_inspection = (
+                db.query(Inspection)
+                .filter(Inspection.id == request.uploadId)
+                .first()
+            )
+
+            if not uploaded_inspection:
+                raise RuntimeError(
+                    f"Uploaded inspection {request.uploadId} was not found."
+                )
+
+            if not uploaded_inspection.image_path:
+                raise RuntimeError(
+                    "Uploaded inspection does not have an image path."
+                )
+
+            rpi_result = await run_rpi_uploaded_inspection(
+                uploaded_inspection.image_path
+            )
+        else:
+            print("[DEBUG] Sending inspection request to Raspberry Pi...")
+            rpi_result = await run_rpi_inspection()
+            print("[DEBUG] Raspberry Pi inspection response received.")
+
+        if not isinstance(rpi_result, dict):
+            raise RuntimeError("Invalid response received from Raspberry Pi.")
+
+        inspection_data = rpi_result.get("inspection")
+
+        if not isinstance(inspection_data, dict):
+            raise RuntimeError(
+                "Raspberry Pi response does not contain inspection data."
+            )
+
+        # ---------------------------------------------------------
+        # 2. Extract Pi inspection result
+        # ---------------------------------------------------------
+        pi_inspection_id = inspection_data.get("inspection_id")
+        status = inspection_data.get("status", "FAIL")
+        input_type = inspection_data.get("input_type", "camera")
+        image_path = inspection_data.get("image_path")
+        detection_image = inspection_data.get("detection_image")
+
+        detections = inspection_data.get("detections", [])
+        xmccv_results = inspection_data.get("xmccv", [])
+        decision = inspection_data.get("decision", {})
+        xai_result = inspection_data.get("xai", {})
+
+        # ---------------------------------------------------------
+        # 3. Generate the Windows PCB ID
+        # ---------------------------------------------------------
+        board_id = f"PCB-{uuid.uuid4().hex[:8].upper()}"
+
+        image_name = (
+            Path(image_path).name
+            if image_path
+            else f"{board_id}.jpg"
+        )
+
+        # ---------------------------------------------------------
+        # 4. Determine highest YOLO confidence
+        # ---------------------------------------------------------
+        confidence_values = []
+
+        for detection in detections:
+            confidence = detection.get("confidence")
+
+            if confidence is not None:
+                try:
+                    confidence_values.append(float(confidence))
+                except (TypeError, ValueError):
+                    pass
+
+        highest_confidence = (
+            max(confidence_values)
+            if confidence_values
+            else None
+        )
+
+        # ---------------------------------------------------------
+        # 5. Determine defect/component summary
+        # ---------------------------------------------------------
+        defect_classes = []
+
+        for detection in detections:
+            class_name = detection.get("class_name")
+
+            if class_name:
+                defect_classes.append(str(class_name))
+
+        defect_class = (
+            ", ".join(dict.fromkeys(defect_classes))
+            if defect_classes
+            else None
+        )
+
+        # ---------------------------------------------------------
+        # 6. Store XAI information
+        # ---------------------------------------------------------
+        xai_explanation = {
+            "inspection_id": pi_inspection_id,
+            "mode": xai_result.get("mode"),
+            "status": xai_result.get("status"),
+            "evidence_path": xai_result.get("evidence_path"),
+            "overlay_path": xai_result.get("overlay_path"),
+            "heatmap_path": xai_result.get("heatmap_path"),
+            "missing_components": xai_result.get(
+                "missing_components",
+                []
+            ),
         }
 
-    # ---------------------------------------------------------
-    # Store ML result
-    # ---------------------------------------------------------
-
-    inspection.model_name = "PCBVision YOLO11s"
-    inspection.inspection_time = ml_result["inference_time"]
-
-    # Keep status neutral for now.
-    # PASS/FAIL will be decided later using verification logic.
-    inspection.status = "INSPECTED"
-
-    # Store highest detection confidence as a temporary
-    # inspection-level confidence value.
-    if ml_result["detections"]:
-        inspection.confidence = max(
-            detection["confidence"]
-            for detection in ml_result["detections"]
+        # ---------------------------------------------------------
+        # 7. Create Windows Inspection record
+        # ---------------------------------------------------------
+        inspection = Inspection(
+            board_id=board_id,
+            image_name=image_name,
+            image_path=image_path,
+            model_name="PCBVision YOLO11s",
+            status=status,
+            confidence=highest_confidence,
+            defect_class=defect_class,
+            inspection_time=None,
+            xai_explanation=str(xai_explanation),
         )
-    else:
-        inspection.confidence = None
 
-    # ---------------------------------------------------------
-    # Save individual detections
-    # ---------------------------------------------------------
+        db.add(inspection)
+        db.flush()
 
-    for detection in ml_result["detections"]:
-        bbox = detection["bbox"]
+        # ---------------------------------------------------------
+        # 8. Create Detection records
+        # ---------------------------------------------------------
+        for detection in detections:
+            bbox = detection.get("bbox") or {}
 
-        db_detection = Detection(
+            db_detection = Detection(
+                inspection_id=inspection.id,
+                class_name=str(
+                    detection.get("class_name", "unknown")
+                ),
+                confidence=detection.get("confidence"),
+                x_min=bbox.get("x1"),
+                y_min=bbox.get("y1"),
+                x_max=bbox.get("x2"),
+                y_max=bbox.get("y2"),
+                detection_type="YOLO",
+            )
+
+            db.add(db_detection)
+
+        # ---------------------------------------------------------
+        # 9. Create PASS/FAIL notification
+        # ---------------------------------------------------------
+        overall_status = str(status).upper()
+
+        if overall_status == "PASS":
+            notification_type = "SUCCESS"
+            notification_title = "PCB Inspection Passed"
+            notification_message = (
+                f"PCB {board_id} passed inspection."
+            )
+        else:
+            notification_type = "ERROR"
+            notification_title = "PCB Inspection Failed"
+            notification_message = (
+                f"PCB {board_id} failed inspection."
+            )
+
+        notification = Notification(
+            type=notification_type,
+            title=notification_title,
+            message=notification_message,
+            is_read=False,
             inspection_id=inspection.id,
-            class_name=detection["class_name"],
-            confidence=detection["confidence"],
-            x_min=bbox["x1"],
-            y_min=bbox["y1"],
-            x_max=bbox["x2"],
-            y_max=bbox["y2"],
-            detection_type="YOLO"
         )
 
-        db.add(db_detection)
+        db.add(notification)
 
-    # ---------------------------------------------------------
-    # Temporary XAI state
-    # ---------------------------------------------------------
+        # ---------------------------------------------------------
+        # 10. Commit everything
+        # ---------------------------------------------------------
+        db.commit()
+        db.refresh(inspection)
 
-    inspection.xai_explanation = (
-        "YOLO detection completed. "
-        "X-MCCV verification and XAI analysis are pending."
-    )
+        # ---------------------------------------------------------
+        # 11. Return Pi result + Windows DB information
+        # ---------------------------------------------------------
+        return {
+            "status": "success",
+            "inspection": inspection_data,
+            "database": {
+                "inspection_id": inspection.id,
+                "board_id": inspection.board_id,
+                "status": inspection.status,
+                "image_name": inspection.image_name,
+            },
+            "images": {
+                "input": make_rpi_image_url(image_path),
+                "detection": make_rpi_image_url(detection_image),
+                "heatmap": make_rpi_image_url(xai_result.get("heatmap_path")),
+                "overlay": make_rpi_image_url(xai_result.get("overlay_path")),
+            },
+            "results": {
+                "detections": detections,
+                "xmccv": xmccv_results,
+                "decision": decision,
+                "xai": xai_result,
+            },
+        }
 
-    notification = Notification(
-        type="success",
-        title="Inspection Completed",
-        message=f"PCB image analyzed using PCBVision YOLO11s for {inspection.board_id}.",
-        inspection_id=inspection.id
-    )
+    except RuntimeError as exc:
+        db.rollback()
 
-    db.add(notification)
-    db.commit()
-    db.refresh(inspection)
+        raise HTTPException(
+            status_code=502,
+            detail=str(exc),
+        ) from exc
 
-    return {
-        "id": inspection.id,
-        "model_name": inspection.model_name,
-        "status": inspection.status,
-        "defect_class": inspection.defect_class,
-        "xai_explanation": inspection.xai_explanation,
-        "board_id": inspection.board_id,
-        "image_name": inspection.image_name,
-        "image_path": inspection.image_path,
-        "confidence": inspection.confidence,
-        "inspection_time": inspection.inspection_time,
-        "created_at": inspection.created_at,
-        "detections": [
-            {
-                "class_id": None,
-                "class_name": detection.class_name,
-                "confidence": detection.confidence,
-                "bbox": {
-                    "x1": detection.x_min,
-                    "y1": detection.y_min,
-                    "x2": detection.x_max,
-                    "y2": detection.y_max,
-                },
-                "detection_type": detection.detection_type,
-            }
-            for detection in inspection.detections
-        ],
-    }
+    except Exception as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Raspberry Pi inspection/database operation failed: {exc}",
+        ) from exc
+
 
 @app.get("/api/inspection/{inspection_id}/image")
 def get_inspection_image(
