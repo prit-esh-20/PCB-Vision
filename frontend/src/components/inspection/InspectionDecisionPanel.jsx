@@ -55,8 +55,15 @@ export default function InspectionDecisionPanel({ inspection, onGenerateReport, 
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="p-3 rounded-lg border border-accent/10 bg-[#050816]/40">
-          <p className="font-mono text-[8px] text-slate-500 uppercase tracking-wider">Board ID</p>
-          <p className="font-mono text-[11px] font-bold text-white mt-0.5">{inspection?.board_id || inspection?.pcbId || "—"}</p>
+          <p className="font-mono text-[8px] text-slate-500 uppercase tracking-wider">
+            Inspection ID
+          </p>
+
+          <p className="font-mono text-[11px] font-bold text-white mt-0.5">
+            {inspection?.inspection_id ||
+              inspection?.inspection?.inspection_id ||
+              "—"}
+          </p>
         </div>
         <div className="p-3 rounded-lg border border-accent/10 bg-[#050816]/40">
           <p className="font-mono text-[8px] text-slate-500 uppercase tracking-wider">Inspection Time</p>

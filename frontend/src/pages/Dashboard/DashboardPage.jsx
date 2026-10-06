@@ -298,10 +298,10 @@ export default function DashboardPage() {
       pcbImage ||
       (uploadedImage
         ? {
-            url: uploadedImage.url,
-            uploadId: uploadedImage.uploadId || null,
-            name: uploadedImage.name || "Uploaded PCB",
-          }
+          url: uploadedImage.url,
+          uploadId: uploadedImage.uploadId || null,
+          name: uploadedImage.name || "Uploaded PCB",
+        }
         : null);
 
     if (!currentPcbImage && !uploadedImage) {
@@ -533,21 +533,21 @@ export default function DashboardPage() {
     : isInspected
       ? "YOLO detection completed. X-MCCV verification and XAI analysis are pending."
       : xai.defect ||
-        xai.explanation ||
-        (typeof inspection?.xaiExplanation === "string"
-          ? inspection.xaiExplanation
-          : inspection?.xaiExplanation?.explanation ||
-            inspection?.xaiExplanation?.class_name ||
-            null) ||
-        (isPass
-          ? "No significant visual defect detected."
-          : "The backend flagged this board as defective, but has not provided an explanation yet.");
+      xai.explanation ||
+      (typeof inspection?.xaiExplanation === "string"
+        ? inspection.xaiExplanation
+        : inspection?.xaiExplanation?.explanation ||
+        inspection?.xaiExplanation?.class_name ||
+        null) ||
+      (isPass
+        ? "No significant visual defect detected."
+        : "The backend flagged this board as defective, but has not provided an explanation yet.");
 
   const xaiWhyPass = isMlPending
     ? "The ML inspection model has not been integrated yet. This PASS result is a temporary backend state."
     : isPass
       ? xai.explanation ||
-        "The inspected component regions and PCB layout appear consistent with the expected visual pattern."
+      "The inspected component regions and PCB layout appear consistent with the expected visual pattern."
       : "";
 
   const xaiWhere =
@@ -563,9 +563,9 @@ export default function DashboardPage() {
     : isMlPending
       ? "No corrective action is available yet. ML-based defect detection will provide the actual recommendation."
       : xai.recommendation ||
-        (isPass
-          ? "No corrective action required. Board can proceed to the next stage."
-          : "Corrective action details are not available from the backend yet. Inspect the highlighted region and rerun the inspection.");
+      (isPass
+        ? "No corrective action required. Board can proceed to the next stage."
+        : "Corrective action details are not available from the backend yet. Inspect the highlighted region and rerun the inspection.");
 
   const xaiVisualUrl =
     inspection?.xai?.overlayUrl ||
@@ -585,42 +585,42 @@ export default function DashboardPage() {
   const inspectionButton = scanning
     ? { label: "Inspecting...", icon: RefreshCw, loading: true, disabled: true }
     : {
-        [INSPECTION_STATE.READY]: {
-          label: "Start Inspection",
-          icon: Play,
-          loading: false,
-          disabled: false,
-        },
-        [INSPECTION_STATE.STARTING]: {
-          label: "Starting...",
-          icon: Loader2,
-          loading: true,
-          disabled: true,
-        },
-        [INSPECTION_STATE.INSPECTING]: {
-          label: "Inspecting...",
-          icon: RefreshCw,
-          loading: false,
-          disabled: false,
-        },
-        [INSPECTION_STATE.COMPLETED]: {
-          label: "Start Inspection",
-          icon: Play,
-          loading: false,
-          disabled: false,
-        },
-        [INSPECTION_STATE.ERROR]: {
-          label: "Retry Inspection",
-          icon: Play,
-          loading: false,
-          disabled: false,
-        },
-      }[inspectionState] || {
+      [INSPECTION_STATE.READY]: {
         label: "Start Inspection",
         icon: Play,
         loading: false,
         disabled: false,
-      };
+      },
+      [INSPECTION_STATE.STARTING]: {
+        label: "Starting...",
+        icon: Loader2,
+        loading: true,
+        disabled: true,
+      },
+      [INSPECTION_STATE.INSPECTING]: {
+        label: "Inspecting...",
+        icon: RefreshCw,
+        loading: false,
+        disabled: false,
+      },
+      [INSPECTION_STATE.COMPLETED]: {
+        label: "Start Inspection",
+        icon: Play,
+        loading: false,
+        disabled: false,
+      },
+      [INSPECTION_STATE.ERROR]: {
+        label: "Retry Inspection",
+        icon: Play,
+        loading: false,
+        disabled: false,
+      },
+    }[inspectionState] || {
+      label: "Start Inspection",
+      icon: Play,
+      loading: false,
+      disabled: false,
+    };
 
   return (
     <AppLayout>
@@ -914,11 +914,10 @@ export default function DashboardPage() {
                   : handleStartInspection
               }
               disabled={inspectionButton.disabled}
-              className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest shadow-lg transition-all duration-300 ${
-                inspectionButton.disabled
+              className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest shadow-lg transition-all duration-300 ${inspectionButton.disabled
                   ? "cursor-not-allowed bg-accent/40 text-primary-bg/70"
                   : "bg-accent text-primary-bg hover:shadow-[0_0_30px_rgba(50,213,131,0.25)]"
-              }`}
+                }`}
             >
               <inspectionButton.icon
                 className={`h-3.5 w-3.5 ${inspectionButton.loading ? "animate-spin" : ""}`}
@@ -939,11 +938,10 @@ export default function DashboardPage() {
               whileTap={uploadLoading ? undefined : { scale: 0.97 }}
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadLoading}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
-                uploadLoading
+              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${uploadLoading
                   ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
                   : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-              }`}
+                }`}
             >
               {uploadLoading ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -982,11 +980,10 @@ export default function DashboardPage() {
               whileTap={generating || !inspection ? undefined : { scale: 0.97 }}
               onClick={handleGenerateReport}
               disabled={generating}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
-                generating || !inspection
+              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${generating || !inspection
                   ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
                   : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-              }`}
+                }`}
             >
               {generating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1002,11 +999,10 @@ export default function DashboardPage() {
               whileTap={exporting ? undefined : { scale: 0.97 }}
               onClick={handleExportCsv}
               disabled={exporting}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
-                exporting
+              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${exporting
                   ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
                   : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-              }`}
+                }`}
             >
               {exporting ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1022,11 +1018,10 @@ export default function DashboardPage() {
               whileTap={capturing ? undefined : { scale: 0.97 }}
               onClick={handleCaptureSnapshot}
               disabled={capturing}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
-                capturing
+              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${capturing
                   ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
                   : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-              }`}
+                }`}
             >
               {capturing ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1157,67 +1152,6 @@ export default function DashboardPage() {
           </motion.div>
         )}
 
-        {/* ---- INSPECTION RESULTS OVERVIEW ---- */}
-        <motion.div variants={itemVariants} className="space-y-3">
-          <div className="flex items-center justify-between border-b border-accent/5 pb-2">
-            <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-accent" />
-              <span className="font-display text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Recent Inspection Results
-              </span>
-            </div>
-            <a href="/history" className="flex items-center gap-1 text-[9px] font-mono font-bold uppercase tracking-wider text-accent hover:text-white transition-colors">
-              <ExternalLink className="w-3 h-3" />
-              View All
-            </a>
-          </div>
-          {historyLoading ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="skeleton-shimmer h-24 rounded-lg" />
-              ))}
-            </div>
-          ) : recentInspections.length === 0 ? (
-            <div className="py-8 text-center">
-              <History className="w-10 h-10 mx-auto text-slate-600" />
-              <p className="mt-2 font-mono text-[10px] text-slate-500 uppercase tracking-widest">No Inspection History</p>
-              <p className="mt-1 font-mono text-[9px] text-slate-600">Complete an inspection to see results here.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {recentInspections.map((record) => (
-                <GlassCard key={record.id} hoverLift={false} className="p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-mono text-[10px] font-bold text-white truncate">{record.pcbId || record.id}</p>
-                      <p className="font-mono text-[8px] text-slate-500 mt-0.5">{new Date(record.scanDateTime).toLocaleString()}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className={`px-2 py-0.5 rounded text-[7px] font-mono font-bold uppercase tracking-wider ${
-                        record.status === "PASS" ? "bg-success/15 text-success border border-success/30" :
-                        record.status === "FAIL" ? "bg-danger/15 text-danger border border-danger/30" :
-                        "bg-warning/15 text-warning border border-warning/30"
-                      }`}>
-                        {record.status || "—"}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-[9px] font-mono">
-                    <span className="text-slate-400">Defect: <span className={`text-white ${record.defectClass && record.defectClass !== "None" ? "text-warning" : "text-success"}`}>{record.defectClass || "None"}</span></span>
-                    <span className="text-slate-400">Conf: <span className="text-accent">{record.yoloConfidence ? `${record.yoloConfidence.toFixed(1)}%` : "—"}</span></span>
-                    <span className="text-slate-400">Time: <span className="text-[#00E5FF]">{record.cycleTime ? `${record.cycleTime}s` : "—"}</span></span>
-                  </div>
-                  <button
-                    onClick={() => navigate(`/history`)}
-                    className="mt-2 w-full text-[9px] font-mono font-bold uppercase tracking-wider text-accent hover:text-white transition-colors"
-                  >
-                    View Details →
-                  </button>
-                </GlassCard>
-              ))}
-            </div>
-          )}
-        </motion.div>
 
         {/* ---- PRIMARY INSPECTION GRID: LIVE VIEWPORT + XAI ANALYSIS ---- */}
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[61fr_39fr] items-start">
@@ -1237,13 +1171,12 @@ export default function DashboardPage() {
                   <button
                     onClick={() => setSummaryView(!summaryView)}
                     disabled={!inspection}
-                    className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider transition-all ${
-                      !inspection
+                    className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider transition-all ${!inspection
                         ? "cursor-not-allowed text-slate-700"
                         : summaryView
                           ? "bg-accent/15 text-accent border border-accent/30"
                           : "border border-accent/10 text-slate-500 hover:text-slate-300"
-                    }`}
+                      }`}
                   >
                     <Info className="h-3 w-3" />
                     {summaryView ? "Live View" : "Summary"}
@@ -1756,18 +1689,18 @@ export default function DashboardPage() {
                         </span>
                         {(inspection?.inspectionTime != null ||
                           inspection?.cycleTime != null) && (
-                          <>
-                            <span className="text-slate-600">|</span>
-                            <span className="text-slate-500">
-                              Time:{" "}
-                              <span className="text-white">
-                                {inspection.inspectionTime ??
-                                  inspection.cycleTime}
-                                s
+                            <>
+                              <span className="text-slate-600">|</span>
+                              <span className="text-slate-500">
+                                Time:{" "}
+                                <span className="text-white">
+                                  {inspection.inspectionTime ??
+                                    inspection.cycleTime}
+                                  s
+                                </span>
                               </span>
-                            </span>
-                          </>
-                        )}
+                            </>
+                          )}
                       </div>
                       <div className="flex items-center gap-3">
                         {hudStatus ? (
@@ -1833,7 +1766,7 @@ export default function DashboardPage() {
                       </button>
                     </div>
                     {selectedComponent.confidence !== undefined &&
-                    selectedComponent.reason !== undefined ? (
+                      selectedComponent.reason !== undefined ? (
                       <div className="mt-3 grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                           <div className="flex justify-between font-mono text-[10px]">
@@ -1942,7 +1875,7 @@ export default function DashboardPage() {
               xaiVisualUrl={inspection?.xai?.overlay_path || inspection?.xai?.heatmap_path || inspection?.xai?.visualization || null}
             />
 
-            {/* 3. ODC Results */}
+            {/* 3. OCR Results */}
             <ODCResultsPanel
               inspection={inspection}
             />
@@ -2161,7 +2094,7 @@ export default function DashboardPage() {
                 } catch (err) {
                   setTemplateModalMessage(
                     err.message ||
-                      "Template creation failed. Please try again.",
+                    "Template creation failed. Please try again.",
                   );
                 } finally {
                   setIsCreatingTemplate(false);
