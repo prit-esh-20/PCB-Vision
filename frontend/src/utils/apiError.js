@@ -4,27 +4,46 @@
 export const toErrorMessage = (err, fallback) => {
   if (!err) return fallback;
 
-  const dataMessage =
-    err?.response?.data?.message ||
-    err?.response?.data?.detail ||
-    err?.response?.data?.error;
+  const data = err?.response?.data;
+  const candidates = [
+    data?.message,
+    data?.detail,
+    data?.error,
+    err?.message,
+    err?.detail,
+    err?.error,
+  ];
 
-  if (dataMessage) return String(dataMessage);
-
-  // ECONNABORTED = Axios timeout. For the inspection run endpoint the backend
-  // may have finished after the client gave up — don't claim unavailability.
-  if (err?.code === "ECONNABORTED") {
-    const url = err?.config?.url ?? "";
-    if (url.includes("/inspection/run")) {
-      return "Inspection is taking longer than expected. Check the Dashboard — the result may already be available.";
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) {
+      return value;
     }
+
+    if (value && typeof value === "object") {
+      if (typeof value.message === "string") return value.message;
+      if (typeof value.detail === "string") return value.detail;
+
+      if (Array.isArray(value)) {
+        return value
+          .map((item) =>
+            typeof item === "string"
+              ? item
+              : item?.msg || JSON.stringify(item)
+          )
+          .join("; ");
+      }
+
+      return JSON.stringify(value);
+    }
+  }
+
+  if (err?.code === "ECONNABORTED") {
     return "Request timed out. Please try again.";
   }
 
-  const raw = err?.message || "";
-  if (/network|connect|socket/i.test(raw)) {
+  if (err?.code === "ERR_NETWORK") {
     return "Backend connection unavailable.";
   }
 
-  return raw || fallback;
+  return fallback;
 };

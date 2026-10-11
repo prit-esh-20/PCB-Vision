@@ -38,6 +38,31 @@
   background: rgba(50, 213, 131, 0.35);
 }
 
+/* Custom Scrollbar for Internal Panels */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(50, 213, 131, 0.25) rgba(7, 17, 15, 0.5);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(7, 17, 15, 0.4);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(50, 213, 131, 0.22);
+  border-radius: 4px;
+  border: 1px solid rgba(50, 213, 131, 0.15);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(50, 213, 131, 0.42);
+}
+
 /* Reset Root Layout set by Vite template */
 #root {
   width: 100%;

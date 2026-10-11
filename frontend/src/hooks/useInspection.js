@@ -391,16 +391,14 @@ export function useInspection() {
   return {
     pcbImage,
     inspection,
-    loading,
-    error,
-    errorMessage,
     state,
+    errorMessage,
     scanPhase,
     setPcbImage,
     clearPcbImage,
     runInspection,
+    runUploadedInspection,
     refreshInspection,
-    fetchInspection,
     resetInspection,
   };
 }

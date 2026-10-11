@@ -19,6 +19,7 @@ export default function HeatmapPanel({
     return (
       <GlassCard
         className={`flex flex-col h-full space-y-3 ${className}`}
+        contentClassName="h-full flex flex-col min-h-0 w-full"
         hoverLift={false}
       >
         <div className="flex items-center gap-2 border-b border-accent/5 pb-2">
@@ -121,6 +122,7 @@ export default function HeatmapPanel({
     return (
       <GlassCard
         className={`flex flex-col h-full space-y-3 ${className}`}
+        contentClassName="h-full flex flex-col min-h-0 w-full"
         hoverLift={false}
       >
         <div className="flex items-center gap-2 border-b border-accent/5 pb-2">
@@ -145,6 +147,7 @@ export default function HeatmapPanel({
   return (
     <GlassCard
       className={`flex flex-col h-full space-y-3 ${className}`}
+      contentClassName="h-full flex flex-col min-h-0 w-full"
       hoverLift={false}
     >
       {/* HEADER */}

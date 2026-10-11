@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 export default function GlassCard({
   children,
   className = "",
+  contentClassName = "",
   hoverLift = true,
   ...props
 }) {
@@ -52,7 +53,7 @@ export default function GlassCard({
       {/* Border animation - right */}
       <span className="absolute right-0 top-0 w-px h-0 bg-gradient-to-t from-transparent via-accent/70 to-transparent transition-all duration-500 group-hover:h-full delay-75" />
 
-      <div className="relative z-10">{children}</div>
+      <div className={`relative z-10 ${contentClassName}`}>{children}</div>
     </motion.div>
   );
 }

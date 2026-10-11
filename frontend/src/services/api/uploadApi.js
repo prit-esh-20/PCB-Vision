@@ -14,7 +14,7 @@ export const uploadApi = {
     }
 
     const formData = new FormData();
-    formData.append("image", file);
+    formData.append("file", file);
 
     const { data } = await apiClient.post(
       "/inspection/upload",
