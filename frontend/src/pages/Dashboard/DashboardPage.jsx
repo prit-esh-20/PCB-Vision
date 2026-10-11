@@ -157,6 +157,7 @@ export default function DashboardPage() {
     setPcbImage,
     clearPcbImage,
     runInspection,
+    runUploadedInspection,
     refreshInspection,
     resetInspection,
   } = useInspection();
@@ -179,12 +180,13 @@ export default function DashboardPage() {
   const { cameraStatus } = useCameraStatus();
   const rpiStatus = cameraStatus.rpiStatus;
 
-  const { records: recentInspections, loading: historyLoading } = useInspectionHistory({
-    page: 1,
-    pageSize: 5,
-    sortBy: "timestamp",
-    order: "desc",
-  });
+  const { records: recentInspections, loading: historyLoading } =
+    useInspectionHistory({
+      page: 1,
+      pageSize: 5,
+      sortBy: "timestamp",
+      order: "desc",
+    });
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showNotifications, setShowNotifications] = useState(false);
@@ -289,60 +291,42 @@ export default function DashboardPage() {
       scanning ||
       inspectionState === INSPECTION_STATE.STARTING ||
       inspectionState === INSPECTION_STATE.INSPECTING
-    )
+    ) {
       return;
+    }
 
-    const currentPcbImage =
-      pcbImage ||
-      (uploadedImage
-        ? {
-          url: uploadedImage.url,
-          uploadId: uploadedImage.uploadId || null,
-          name: uploadedImage.name || "Uploaded PCB",
-        }
-        : null);
-
-    if (!currentPcbImage && !uploadedImage) {
+    if (!uploadedImage?.file) {
       setActionStatus({
         type: "error",
-        text: "Please upload or test with a PCB image before starting inspection.",
+        text: "Upload PCB image first. And try again!",
       });
+
       notify({
         type: "error",
         title: "No PCB Image Available",
-        message: "Please upload a PCB image before starting an inspection.",
+        message: "Upload PCB image first. And try again!",
       });
+
       return;
     }
 
-    if (uploadedImage && !pcbImage) {
-      setPcbImage(currentPcbImage);
-    }
-
     setActionStatus(null);
-    const payload = uploadedImage?.uploadId
-      ? { uploadId: uploadedImage.uploadId }
-      : currentPcbImage?.uploadId
-        ? { uploadId: currentPcbImage.uploadId }
-        : undefined;
-    const result = await runInspection(payload);
+
+    const result = await runUploadedInspection(uploadedImage.file);
+
     if (!result.ok) {
       notify({
         type: "error",
         title: "Unable to start inspection.",
         message: result.message,
       });
-      setActionStatus({ type: "error", text: result.message });
+
+      setActionStatus({
+        type: "error",
+        text: result.message,
+      });
     }
-  }, [
-    scanning,
-    inspectionState,
-    uploadedImage,
-    pcbImage,
-    setPcbImage,
-    runInspection,
-    notify,
-  ]);
+  }, [scanning, inspectionState, uploadedImage, runUploadedInspection, notify]);
 
   const handleFetchResult = useCallback(async () => {
     const result = await refreshInspection();
@@ -531,21 +515,21 @@ export default function DashboardPage() {
     : isInspected
       ? "YOLO detection completed. X-MCCV verification and XAI analysis are pending."
       : xai.defect ||
-      xai.explanation ||
-      (typeof inspection?.xaiExplanation === "string"
-        ? inspection.xaiExplanation
-        : inspection?.xaiExplanation?.explanation ||
-        inspection?.xaiExplanation?.class_name ||
-        null) ||
-      (isPass
-        ? "No significant visual defect detected."
-        : "The backend flagged this board as defective, but has not provided an explanation yet.");
+        xai.explanation ||
+        (typeof inspection?.xaiExplanation === "string"
+          ? inspection.xaiExplanation
+          : inspection?.xaiExplanation?.explanation ||
+            inspection?.xaiExplanation?.class_name ||
+            null) ||
+        (isPass
+          ? "No significant visual defect detected."
+          : "The backend flagged this board as defective, but has not provided an explanation yet.");
 
   const xaiWhyPass = isMlPending
     ? "The ML inspection model has not been integrated yet. This PASS result is a temporary backend state."
     : isPass
       ? xai.explanation ||
-      "The inspected component regions and PCB layout appear consistent with the expected visual pattern."
+        "The inspected component regions and PCB layout appear consistent with the expected visual pattern."
       : "";
 
   const xaiWhere =
@@ -561,9 +545,9 @@ export default function DashboardPage() {
     : isMlPending
       ? "No corrective action is available yet. ML-based defect detection will provide the actual recommendation."
       : xai.recommendation ||
-      (isPass
-        ? "No corrective action required. Board can proceed to the next stage."
-        : "Corrective action details are not available from the backend yet. Inspect the highlighted region and rerun the inspection.");
+        (isPass
+          ? "No corrective action required. Board can proceed to the next stage."
+          : "Corrective action details are not available from the backend yet. Inspect the highlighted region and rerun the inspection.");
 
   const xaiVisualUrl =
     inspection?.xai?.overlayUrl ||
@@ -583,42 +567,42 @@ export default function DashboardPage() {
   const inspectionButton = scanning
     ? { label: "Inspecting...", icon: RefreshCw, loading: true, disabled: true }
     : {
-      [INSPECTION_STATE.READY]: {
+        [INSPECTION_STATE.READY]: {
+          label: "Start Inspection",
+          icon: Play,
+          loading: false,
+          disabled: false,
+        },
+        [INSPECTION_STATE.STARTING]: {
+          label: "Starting...",
+          icon: Loader2,
+          loading: true,
+          disabled: true,
+        },
+        [INSPECTION_STATE.INSPECTING]: {
+          label: "Inspecting...",
+          icon: RefreshCw,
+          loading: false,
+          disabled: false,
+        },
+        [INSPECTION_STATE.COMPLETED]: {
+          label: "Start Inspection",
+          icon: Play,
+          loading: false,
+          disabled: false,
+        },
+        [INSPECTION_STATE.ERROR]: {
+          label: "Retry Inspection",
+          icon: Play,
+          loading: false,
+          disabled: false,
+        },
+      }[inspectionState] || {
         label: "Start Inspection",
         icon: Play,
         loading: false,
         disabled: false,
-      },
-      [INSPECTION_STATE.STARTING]: {
-        label: "Starting...",
-        icon: Loader2,
-        loading: true,
-        disabled: true,
-      },
-      [INSPECTION_STATE.INSPECTING]: {
-        label: "Inspecting...",
-        icon: RefreshCw,
-        loading: false,
-        disabled: false,
-      },
-      [INSPECTION_STATE.COMPLETED]: {
-        label: "Start Inspection",
-        icon: Play,
-        loading: false,
-        disabled: false,
-      },
-      [INSPECTION_STATE.ERROR]: {
-        label: "Retry Inspection",
-        icon: Play,
-        loading: false,
-        disabled: false,
-      },
-    }[inspectionState] || {
-      label: "Start Inspection",
-      icon: Play,
-      loading: false,
-      disabled: false,
-    };
+      };
 
   return (
     <AppLayout>
@@ -912,10 +896,11 @@ export default function DashboardPage() {
                   : handleStartInspection
               }
               disabled={inspectionButton.disabled}
-              className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest shadow-lg transition-all duration-300 ${inspectionButton.disabled
+              className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest shadow-lg transition-all duration-300 ${
+                inspectionButton.disabled
                   ? "cursor-not-allowed bg-accent/40 text-primary-bg/70"
                   : "bg-accent text-primary-bg hover:shadow-[0_0_30px_rgba(50,213,131,0.25)]"
-                }`}
+              }`}
             >
               <inspectionButton.icon
                 className={`h-3.5 w-3.5 ${inspectionButton.loading ? "animate-spin" : ""}`}
@@ -936,10 +921,11 @@ export default function DashboardPage() {
               whileTap={uploadLoading ? undefined : { scale: 0.97 }}
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadLoading}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${uploadLoading
+              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
+                uploadLoading
                   ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
                   : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-                }`}
+              }`}
             >
               {uploadLoading ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -978,10 +964,11 @@ export default function DashboardPage() {
               whileTap={generating || !inspection ? undefined : { scale: 0.97 }}
               onClick={handleGenerateReport}
               disabled={generating}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${generating || !inspection
+              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
+                generating || !inspection
                   ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
                   : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-                }`}
+              }`}
             >
               {generating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -997,10 +984,11 @@ export default function DashboardPage() {
               whileTap={exporting ? undefined : { scale: 0.97 }}
               onClick={handleExportCsv}
               disabled={exporting}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${exporting
+              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
+                exporting
                   ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
                   : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-                }`}
+              }`}
             >
               {exporting ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1016,10 +1004,11 @@ export default function DashboardPage() {
               whileTap={capturing ? undefined : { scale: 0.97 }}
               onClick={handleCaptureSnapshot}
               disabled={capturing}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${capturing
+              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
+                capturing
                   ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
                   : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-                }`}
+              }`}
             >
               {capturing ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1150,7 +1139,6 @@ export default function DashboardPage() {
           </motion.div>
         ) : null}
 
-
         {/* ---- PRIMARY INSPECTION GRID: LIVE VIEWPORT + XAI ANALYSIS ---- */}
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[61fr_39fr] items-start">
           {/* ---- LEFT: INSPECTION STATUS ---- */}
@@ -1169,12 +1157,13 @@ export default function DashboardPage() {
                   <button
                     onClick={() => setSummaryView(!summaryView)}
                     disabled={!inspection}
-                    className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider transition-all ${!inspection
+                    className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider transition-all ${
+                      !inspection
                         ? "cursor-not-allowed text-slate-700"
                         : summaryView
                           ? "bg-accent/15 text-accent border border-accent/30"
                           : "border border-accent/10 text-slate-500 hover:text-slate-300"
-                      }`}
+                    }`}
                   >
                     <Info className="h-3 w-3" />
                     {summaryView ? "Live View" : "Summary"}
@@ -1687,18 +1676,18 @@ export default function DashboardPage() {
                         </span>
                         {(inspection?.inspectionTime != null ||
                           inspection?.cycleTime != null) && (
-                            <>
-                              <span className="text-slate-600">|</span>
-                              <span className="text-slate-500">
-                                Time:{" "}
-                                <span className="text-white">
-                                  {inspection.inspectionTime ??
-                                    inspection.cycleTime}
-                                  s
-                                </span>
+                          <>
+                            <span className="text-slate-600">|</span>
+                            <span className="text-slate-500">
+                              Time:{" "}
+                              <span className="text-white">
+                                {inspection.inspectionTime ??
+                                  inspection.cycleTime}
+                                s
                               </span>
-                            </>
-                          )}
+                            </span>
+                          </>
+                        )}
                       </div>
                       <div className="flex items-center gap-3">
                         {hudStatus ? (
@@ -1764,7 +1753,7 @@ export default function DashboardPage() {
                       </button>
                     </div>
                     {selectedComponent.confidence !== undefined &&
-                      selectedComponent.reason !== undefined ? (
+                    selectedComponent.reason !== undefined ? (
                       <div className="mt-3 grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                           <div className="flex justify-between font-mono text-[10px]">
@@ -1833,16 +1822,22 @@ export default function DashboardPage() {
               inspection={inspection}
               xai={inspection?.xai}
               isPass={inspection?.status === "PASS"}
-              isNotPcb={inspection?.isPcb === false || String(inspection?.status || "").toUpperCase() === "NOT_PCB"}
+              isNotPcb={
+                inspection?.isPcb === false ||
+                String(inspection?.status || "").toUpperCase() === "NOT_PCB"
+              }
               isMlPending={inspection?.modelName === "Pending"}
               isInspected={inspection?.status === "INSPECTED"}
-              xaiVisualUrl={inspection?.xai?.overlay_path || inspection?.xai?.heatmap_path || inspection?.xai?.visualization || null}
+              xaiVisualUrl={
+                inspection?.xai?.overlay_path ||
+                inspection?.xai?.heatmap_path ||
+                inspection?.xai?.visualization ||
+                null
+              }
             />
 
             {/* Dedicated MCCV / X-MCCV Result Card beneath XAI */}
-            <XMCCVResultsPanel
-              inspection={inspection}
-            />
+            <XMCCVResultsPanel inspection={inspection} />
           </motion.div>
         </div>
 
@@ -1858,25 +1853,29 @@ export default function DashboardPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-5 items-stretch">
             {/* 1. Heatmap Visualization */}
-            <HeatmapPanel
-              inspection={inspection}
-            />
+            <HeatmapPanel inspection={inspection} />
 
             {/* 2. XAI Explanation */}
             <XAIExplanationPanel
               inspection={inspection}
               xai={inspection?.xai}
               isPass={inspection?.status === "PASS"}
-              isNotPcb={inspection?.isPcb === false || String(inspection?.status || "").toUpperCase() === "NOT_PCB"}
+              isNotPcb={
+                inspection?.isPcb === false ||
+                String(inspection?.status || "").toUpperCase() === "NOT_PCB"
+              }
               isMlPending={inspection?.modelName === "Pending"}
               isInspected={inspection?.status === "INSPECTED"}
-              xaiVisualUrl={inspection?.xai?.overlay_path || inspection?.xai?.heatmap_path || inspection?.xai?.visualization || null}
+              xaiVisualUrl={
+                inspection?.xai?.overlay_path ||
+                inspection?.xai?.heatmap_path ||
+                inspection?.xai?.visualization ||
+                null
+              }
             />
 
             {/* 3. OCR Results */}
-            <ODCResultsPanel
-              inspection={inspection}
-            />
+            <ODCResultsPanel inspection={inspection} />
 
             {/* 4. Final Inspection Decision */}
             <InspectionDecisionPanel
@@ -2074,9 +2073,7 @@ export default function DashboardPage() {
             <button
               onClick={async () => {
                 if (!templateName.trim()) {
-                  setTemplateModalMessage(
-                    "Please enter a template name.",
-                  );
+                  setTemplateModalMessage("Please enter a template name.");
                   return;
                 }
 
@@ -2111,11 +2108,10 @@ export default function DashboardPage() {
                     setShowCreateTemplateModal(false);
                     setTemplateModalMessage("");
                   }, 2000);
-
                 } catch (err) {
                   setTemplateModalMessage(
                     err?.message ||
-                    "Template creation failed. Please try again.",
+                      "Template creation failed. Please try again.",
                   );
                 } finally {
                   setIsCreatingTemplate(false);

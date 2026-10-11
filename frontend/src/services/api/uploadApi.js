@@ -1,31 +1,32 @@
-
 import API_CONFIG from "../../config/api";
 import apiClient from "../apiClient";
 import { uploadMock } from "../mock/uploadMock";
 
 // Upload service for PCB inspection and template creation.
 export const uploadApi = {
-  async uploadImage(file) {
+  async inspectUploadedImage(file) {
     if (API_CONFIG.useMock) {
       return uploadMock.uploadImage(file);
     }
 
+    if (!file) {
+      throw new Error("PCB image is required.");
+    }
+
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("image", file);
 
     const { data } = await apiClient.post(
       "/inspection/upload",
       formData,
       {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       }
     );
 
-    return {
-      ...data,
-      uploadId: data.id,
-      imageUrl: `${API_CONFIG.baseUrl}/inspection/${data.id}/image`,
-    };
+    return data;
   },
 
   async createTemplate({

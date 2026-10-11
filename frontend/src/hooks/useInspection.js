@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { inspectionApi } from "../services/api/inspectionApi";
+import { uploadApi } from "../services/api/uploadApi";
 import { toErrorMessage } from "../utils/apiError";
 
 // Inspection lifecycle states:
@@ -208,6 +209,109 @@ const fetchInspection = async () => {
   }
 };
 
+const runUploadedInspection = async (file) => {
+  const { scanPhase } = snapshot;
+
+  if (
+    runningRef ||
+    scanPhase === SCAN_PHASE.HORIZONTAL ||
+    scanPhase === SCAN_PHASE.VERTICAL
+  ) {
+    return {
+      ok: false,
+      message: "Inspection already in progress.",
+    };
+  }
+
+  if (!file) {
+    return {
+      ok: false,
+      message: "Upload PCB image first. And try again!",
+    };
+  }
+
+  const generation = ++runGeneration;
+
+  runningRef = true;
+
+  patch({
+    inspection: null,
+    error: null,
+    errorMessage: null,
+    loading: true,
+    state: INSPECTION_STATE.STARTING,
+    scanPhase: SCAN_PHASE.HORIZONTAL,
+    scanProgress: 0,
+  });
+
+  startScanTimeline();
+
+  try {
+    const response =
+      await uploadApi.inspectUploadedImage(file);
+
+    if (generation !== runGeneration) {
+      return {
+        ok: false,
+        message: "Inspection cancelled.",
+      };
+    }
+
+    const {
+      inspection: next,
+      state: nextState,
+      error: nextError,
+    } = normalizeInspection(response);
+
+    patch({
+      inspection: next,
+      error: nextError || null,
+      errorMessage: nextError || null,
+      state: nextState,
+    });
+
+    if (nextState === INSPECTION_STATE.ERROR) {
+      stopScanWithError(
+        nextError || null,
+        "Inspection failed."
+      );
+
+      return {
+        ok: false,
+        message: nextError || "Inspection failed.",
+      };
+    }
+
+    return {
+      ok: true,
+      inspection: next,
+      state: nextState,
+    };
+  } catch (err) {
+    if (generation !== runGeneration) {
+      return {
+        ok: false,
+        message: "Inspection cancelled.",
+      };
+    }
+
+    stopScanWithError(
+      err,
+      "Unable to start inspection."
+    );
+
+    return {
+      ok: false,
+      message: toErrorMessage(
+        err,
+        "Unable to start inspection."
+      ),
+    };
+  } finally {
+    patch({ loading: false });
+    runningRef = false;
+  }
+};
 // While the backend is still processing (INSPECTING), the user may fetch
 // the latest result to pick up a completed inspection.
 const refreshInspection = async () => {
