@@ -1815,28 +1815,8 @@ export default function DashboardPage() {
             </AnimatePresence>
           </motion.div>
 
-          {/* ---- RIGHT COLUMN: XAI ANALYSIS (Top) + MCCV / X-MCCV VERIFICATION (Beneath XAI) ---- */}
-          <motion.div variants={itemVariants} className="space-y-4">
-            {/* Top: XAI Inspection Analysis */}
-            <XAIExplanationPanel
-              inspection={inspection}
-              xai={inspection?.xai}
-              isPass={inspection?.status === "PASS"}
-              isNotPcb={
-                inspection?.isPcb === false ||
-                String(inspection?.status || "").toUpperCase() === "NOT_PCB"
-              }
-              isMlPending={inspection?.modelName === "Pending"}
-              isInspected={inspection?.status === "INSPECTED"}
-              xaiVisualUrl={
-                inspection?.xai?.overlay_path ||
-                inspection?.xai?.heatmap_path ||
-                inspection?.xai?.visualization ||
-                null
-              }
-            />
-
-            {/* Dedicated MCCV / X-MCCV Result Card beneath XAI */}
+          {/* ---- RIGHT COLUMN: X-MCCV VERIFICATION ---- */}
+          <motion.div variants={itemVariants}>
             <XMCCVResultsPanel inspection={inspection} />
           </motion.div>
         </div>
@@ -1851,7 +1831,7 @@ export default function DashboardPage() {
               </span>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-5 items-stretch">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-5 items-start">
             {/* 1. Heatmap Visualization */}
             <HeatmapPanel inspection={inspection} />
 

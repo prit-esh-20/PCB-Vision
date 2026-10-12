@@ -224,7 +224,7 @@ export default function XAIExplanationPanel({
         </span>
       </div>
 
-      <div className="space-y-4">
+      <div className="mt-3 overflow-y-auto max-h-[420px] pr-1 custom-scrollbar space-y-4">
 
         {/* PCB VALIDATION */}
         {isNotPcb ? (
@@ -321,7 +321,7 @@ export default function XAIExplanationPanel({
                   <img
                     src={overlayUrl}
                     alt="XAI visualization"
-                    className="relative block w-full h-auto max-h-[300px] object-contain mx-auto"
+                    className="relative block w-full h-auto max-h-[200px] object-contain mx-auto"
                   />
                 </div>
               ) : (
