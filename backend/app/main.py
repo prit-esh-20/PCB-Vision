@@ -233,14 +233,25 @@ async def upload_pcb(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-
     image_data = await file.read()
-    file_path = UPLOAD_DIR / f"{uuid.uuid4().hex[:8].upper()}_{file.filename}"
+
+    if not image_data:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded image is empty."
+        )
+
+    safe_filename = Path(file.filename or "pcb_image.jpg").name
+
+    file_path = (
+        UPLOAD_DIR
+        / f"{uuid.uuid4().hex[:8].upper()}_{safe_filename}"
+    )
     file_path.write_bytes(image_data)
 
     inspection = Inspection(
         board_id=f"PCB-{uuid.uuid4().hex[:8].upper()}",
-        image_name=file.filename,
+        image_name=safe_filename,
         image_path=str(file_path),
         model_name="Pending",
         status="uploaded",
@@ -254,13 +265,59 @@ async def upload_pcb(
     db.commit()
     db.refresh(inspection)
 
-    return {
-        "id": inspection.id,
-        "board_id": inspection.board_id,
-        "filename": inspection.image_name,
-        "status": inspection.status,
-        "message": "PCB image uploaded and inspection record created"
-    }
+    try:
+        result = await run_rpi_uploaded_inspection(
+            str(file_path)
+        )
+
+        # The RPi API returns:
+        # {"status": "success", "inspection": {...}}
+        inspection_data = result.get("inspection", result)
+
+        if not isinstance(inspection_data, dict):
+            raise RuntimeError(
+                "Raspberry Pi returned an invalid inspection result."
+            )
+
+        inspection.status = inspection_data.get(
+            "status", "UNVERIFIED"
+        )
+
+        inspection.model_name = "YOLO"
+        inspection.confidence = max(
+            (
+                float(item["confidence"])
+                for item in inspection_data.get("detections", [])
+                if item.get("confidence") is not None
+            ),
+            default=None
+        )
+        inspection.inspection_time = inspection_data.get(
+            "inspection_time"
+        )
+
+        db.commit()
+        db.refresh(inspection)
+
+        return {
+            "id": inspection.id,
+            "board_id": inspection.board_id,
+            "filename": inspection.image_name,
+            "status": inspection.status,
+            "message": "PCB image uploaded and inspected successfully.",
+            "inspection": inspection_data,
+        }
+
+    except Exception as exc:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"PCB image was uploaded, but inspection failed: {exc}"
+        ) from exc
+
+    finally:
+        await file.close()
 
 
 @app.get("/api/inspections")

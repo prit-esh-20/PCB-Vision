@@ -30,7 +30,7 @@ async def check_rpi_connection() -> dict:
         }
 
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=None) as client:
 
             response = await client.get(
                 f"{RPI_BASE_URL}/health"
