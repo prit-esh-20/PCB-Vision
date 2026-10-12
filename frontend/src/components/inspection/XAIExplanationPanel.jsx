@@ -5,6 +5,20 @@ import {
   Sparkles,
 } from "lucide-react";
 import GlassCard from "../cards/GlassCard";
+import API_CONFIG from "../../config/api";
+
+const toImageUrl = (path) => {
+  if (!path || typeof path !== "string") return null;
+
+  if (/^(https?:\/\/|blob:|data:)/i.test(path)) {
+    return path;
+  }
+
+  const apiBase = API_CONFIG.baseUrl.replace(/\/+$/, "");
+  const imagePath = path.startsWith("/") ? path : `/${path}`;
+
+  return `${apiBase}/inspection/image?path=${encodeURIComponent(imagePath)}`;
+};
 
 export default function XAIExplanationPanel({
   inspection,
@@ -45,13 +59,22 @@ export default function XAIExplanationPanel({
     );
   }
 
-  const xaiData = xai || inspection?.xai || {};
+  const aiExplanation =
+    inspection?.results?.ai_explanation ||
+    inspection?.ai_explanation ||
+    {};
+
+  const xaiData = {
+    ...(inspection?.xai || {}),
+    ...aiExplanation,
+    ...(xai || {}),
+  };
 
   const explanation =
     typeof xaiData.explanation === "string"
       ? xaiData.explanation
-      : typeof xaiData.class_name === "string"
-        ? xaiData.class_name
+      : typeof xaiData.reasoning === "string"
+        ? xaiData.reasoning
         : typeof inspection?.xai_explanation === "string"
           ? inspection.xai_explanation
           : "";
@@ -122,11 +145,15 @@ export default function XAIExplanationPanel({
     .filter(Boolean);
 
   const overlayUrl =
-    xaiVisualUrl ||
-    xaiData.overlay_path ||
-    xaiData.heatmap_path ||
-    xaiData.visualization ||
-    null;
+    inspection?.images?.overlay ||
+    inspection?.images?.heatmap ||
+    toImageUrl(
+      xaiVisualUrl ||
+      xaiData.overlay_path ||
+      xaiData.heatmap_path ||
+      xaiData.visualization ||
+      null
+    );
 
   const mode =
     typeof xaiData.mode === "string"

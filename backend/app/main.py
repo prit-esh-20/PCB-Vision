@@ -1,4 +1,5 @@
 import sys
+import httpx
 from pathlib import Path
 import psutil
 import time
@@ -13,6 +14,7 @@ from app.rpi_client import (
     run_rpi_inspection,
     run_rpi_uploaded_inspection,
     make_rpi_image_url,
+    RPI_BASE_URL,
 )
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,6 +62,8 @@ from ml.inference import inspect_pcb
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+EXPLANATION_SERVICE_URL = "http://127.0.0.1:8100/inspection/explain"
 
 camera_fps = {
     "value": None,
@@ -187,8 +191,64 @@ async def create_template(
         "raspberry_pi_result": pi_result,
     }
 
+
 @app.get("/api/inspection/image")
-def get_inspection_image(path: str):
+async def get_inspection_image(path: str):
+    if not path.startswith("/home/pi4/PCBVISION/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid inspection image path",
+        )
+
+    if not RPI_BASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Raspberry Pi address is not configured",
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.get(
+                f"{RPI_BASE_URL}/inspection/image",
+                params={"path": path},
+            )
+
+        if response.status_code == 404:
+            raise HTTPException(
+                status_code=404,
+                detail="Image not found on Raspberry Pi",
+            )
+
+        if response.status_code >= 400:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Raspberry Pi image request failed: "
+                    f"HTTP {response.status_code}"
+                ),
+            )
+
+        content_type = response.headers.get(
+            "content-type", "application/octet-stream"
+        )
+
+        if not content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=502,
+                detail="Raspberry Pi did not return an image",
+            )
+
+        return Response(
+            content=response.content,
+            media_type=content_type,
+        )
+
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not reach Raspberry Pi: {exc}",
+        ) from exc
+
     image_path = Path(path).resolve()
     base_dir = Path("/home/pi4/PCBVISION").resolve()
 
@@ -2009,6 +2069,51 @@ async def capture_camera_image():
             detail=str(exc),
         ) from exc
 
+async def get_ai_explanation(
+    inspection_data: dict,
+    status: str,
+    detections: list,
+    xmccv_results: list,
+    xai_result: dict,
+) -> dict | None:
+    """
+    Request an explanation from the separate AI service.
+    Does not modify inspection results or the final decision.
+    """
+    payload = {
+        "status": str(status).upper(),
+        "board_type": inspection_data.get("board_type", "Unknown"),
+        "detections": detections,
+        "xmccv_results": xmccv_results,
+        "xai_evidence": xai_result,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            response = await client.post(
+                EXPLANATION_SERVICE_URL,
+                json=payload,
+            )
+            response.raise_for_status()
+            result = response.json()
+
+        if (
+            isinstance(result, dict)
+            and result.get("status") == "success"
+            and isinstance(result.get("explanation"), str)
+        ):
+            return result
+
+        print("[AI Explanation] Unexpected response format.")
+        return None
+
+    except Exception as exc:
+        print(
+            f"[AI Explanation] Service unavailable: "
+            f"{type(exc).__name__}"
+        )
+        return None
+
 @app.post("/api/inspection/run")
 async def run_inspection(
     request: InspectionRequest | None = None,
@@ -2221,6 +2326,13 @@ async def run_inspection(
         # ---------------------------------------------------------
         db.commit()
         db.refresh(inspection)
+        ai_explanation = await get_ai_explanation(
+            inspection_data=inspection_data,
+            status=status,
+            detections=detections,
+            xmccv_results=xmccv_results,
+            xai_result=xai_result,
+        )
 
         # ---------------------------------------------------------
         # 11. Return Pi result + Windows DB information
@@ -2240,11 +2352,13 @@ async def run_inspection(
                 "heatmap": make_rpi_image_url(xai_result.get("heatmap_path")),
                 "overlay": make_rpi_image_url(xai_result.get("overlay_path")),
             },
+            
             "results": {
                 "detections": detections,
                 "xmccv": xmccv_results,
                 "decision": decision,
                 "xai": xai_result,
+                "ai_explanation": ai_explanation,
             },
         }
 

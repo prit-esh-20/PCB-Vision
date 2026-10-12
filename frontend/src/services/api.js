@@ -4,7 +4,7 @@ import axios from "axios";
 // Switch the API methods in mockApi.js to use this instance when ready to transition to production hardware.
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000/api",
-  timeout: 10000,
+  timeout: 0,
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",

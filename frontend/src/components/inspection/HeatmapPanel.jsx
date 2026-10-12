@@ -7,7 +7,7 @@ import {
   Scan,
 } from "lucide-react";
 import GlassCard from "../cards/GlassCard";
-
+import API_CONFIG from "../../config/api";
 
 export default function HeatmapPanel({
   inspection,
@@ -45,6 +45,23 @@ export default function HeatmapPanel({
     );
   }
 
+  
+  const toImageUrl = (path) => {
+    if (!path || typeof path !== "string") return null;
+
+    // Keep complete URLs unchanged.
+    if (/^(https?:\/\/|blob:|data:)/i.test(path)) {
+      return path;
+    }
+
+    // Preserve /api in the configured backend URL.
+    const apiBase = API_CONFIG.baseUrl.replace(/\/+$/, "");
+    const imagePath = path.startsWith("/") ? path : `/${path}`;
+
+    return `${apiBase}/inspection/image?path=${encodeURIComponent(imagePath)}`;
+  };
+
+
   const xai = inspection?.xai || {};
 
   const inputUrl =
@@ -59,17 +76,19 @@ export default function HeatmapPanel({
     inspection?.images?.detection ||
     null;
 
-  const heatmapUrl =
+  const heatmapUrl = toImageUrl(
     xai?.heatmap_path ||
     xai?.heatmapUrl ||
     inspection?.images?.heatmap ||
-    null;
+    null
+  );
 
-  const overlayUrl =
+  const overlayUrl = toImageUrl(
     xai?.overlay_path ||
     xai?.overlayUrl ||
     inspection?.images?.overlay ||
-    null;
+    null
+  );
 
   const thermalUrl =
     inspection?.thermal_image ||
