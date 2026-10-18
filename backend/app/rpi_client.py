@@ -350,7 +350,7 @@ async def run_rpi_uploaded_inspection(
             }
 
             async with httpx.AsyncClient(
-                timeout=180.0
+                timeout=None
             ) as client:
 
                 response = await client.post(

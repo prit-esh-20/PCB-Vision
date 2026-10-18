@@ -335,9 +335,6 @@ export default function LiveInspectionPage() {
       const response = await apiClient.post(
         "/inspection/run",
         {},
-        {
-          timeout: 240000,
-        }
       );
 
       const result = response?.data;
