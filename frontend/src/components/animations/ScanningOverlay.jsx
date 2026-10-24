@@ -11,6 +11,12 @@ import { useScanProgress } from "../../hooks/useInspection";
 // Progress comes from the shared inspection store (0-50 during the horizontal
 // pass, 50-100 during the vertical pass) and is normalized to the active
 // phase so each line makes ONE complete pass across the PCB area.
+//
+// The scan timeline loops CONTINUOUSLY while the inspection is in progress.
+// It never stops on its own: the animation only stops when the actual
+// inspection result arrives (COMPLETED / ERROR) or the inspection is
+// reset/cancelled. This guarantees the animation reflects the real backend
+// lifecycle, not an arbitrary duration.
 export default function ScanningOverlay({ phase }) {
   const progress = useScanProgress();
 

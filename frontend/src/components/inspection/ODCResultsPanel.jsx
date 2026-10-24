@@ -13,9 +13,10 @@ export default function ODCResultsPanel({
     return (
       <GlassCard
         className={`flex flex-col h-full ${className}`}
+        contentClassName="h-full flex flex-col min-h-0 w-full"
         hoverLift={false}
       >
-        <div className="flex items-center gap-2 border-b border-accent/5 pb-2">
+        <div className="flex items-center gap-2 border-b border-accent/5 pb-2 shrink-0">
           <FileText className="w-3.5 h-3.5 text-accent" />
 
           <span className="font-display text-[10px] tracking-widest text-white uppercase font-bold">
@@ -23,7 +24,7 @@ export default function ODCResultsPanel({
           </span>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center gap-2 py-8 text-center">
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 py-8 text-center min-h-[160px]">
           <FileText className="w-8 h-8 text-slate-600" />
 
           <span className="font-mono text-[10px] tracking-widest text-slate-400 uppercase font-bold">
@@ -51,10 +52,11 @@ export default function ODCResultsPanel({
   return (
     <GlassCard
       className={`flex flex-col h-full ${className}`}
+      contentClassName="h-full flex flex-col min-h-0 w-full"
       hoverLift={false}
     >
       {/* HEADER */}
-      <div className="flex items-center gap-2 border-b border-accent/5 pb-2">
+      <div className="flex items-center gap-2 border-b border-accent/5 pb-2.5 shrink-0">
         <FileText className="w-3.5 h-3.5 text-accent" />
 
         <span className="font-display text-[10px] tracking-widest text-white uppercase font-bold">
@@ -73,7 +75,7 @@ export default function ODCResultsPanel({
       </div>
 
       {/* ONLY THE TWO REQUIRED PARAMETERS */}
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pt-3 flex flex-col justify-center custom-scrollbar">
         <div className="grid grid-cols-2 gap-3 w-full">
           <div className="p-4 rounded-lg border border-accent/10 bg-[#050816]/40">
             <p className="font-mono text-[8px] text-slate-500 uppercase tracking-wider">
@@ -95,17 +97,17 @@ export default function ODCResultsPanel({
             </p>
           </div>
         </div>
+
+        {components === 0 && (
+          <div className="flex items-center gap-2 pt-3 mt-4 border-t border-accent/5 shrink-0">
+            <AlertTriangle className="w-3.5 h-3.5 text-warning shrink-0" />
+
+            <span className="font-mono text-[8px] text-slate-500 break-words [overflow-wrap:anywhere]">
+              No YOLO components were detected.
+            </span>
+          </div>
+        )}
       </div>
-
-      {components === 0 && (
-        <div className="flex items-center gap-2 pt-3 border-t border-accent/5">
-          <AlertTriangle className="w-3.5 h-3.5 text-warning" />
-
-          <span className="font-mono text-[8px] text-slate-500">
-            No YOLO components were detected.
-          </span>
-        </div>
-      )}
     </GlassCard>
   );
 }

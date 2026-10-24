@@ -422,8 +422,20 @@ export default function DashboardPage() {
   }, [generateReport, inspection, uploadedImage, notify]);
 
   const handleExportCsv = useCallback(async () => {
+    if (!inspection) {
+      notify({
+        type: "error",
+        title: "No inspection available.",
+        message: "Complete a PCB inspection before exporting.",
+      });
+      setActionStatus({
+        type: "error",
+        text: "Complete a PCB inspection before exporting.",
+      });
+      return;
+    }
     setActionStatus(null);
-    const result = await exportCsv();
+    const result = await exportCsv(inspection);
     if (!result.ok) {
       notify({
         type: "error",
@@ -435,9 +447,14 @@ export default function DashboardPage() {
     }
     setActionStatus({
       type: "success",
-      text: `Exported ${result.rows} inspection record(s).`,
+      text: `Exported inspection ${inspection.pcbId || inspection.id}.`,
     });
-  }, [exportCsv, notify]);
+    notify({
+      type: "success",
+      title: "Export Complete",
+      message: `Inspection ${inspection.pcbId || ""} exported to ${result.filename || "CSV"}.`,
+    });
+  }, [exportCsv, inspection, notify]);
 
   const handleCaptureSnapshot = useCallback(async () => {
     setActionStatus(null);
@@ -980,12 +997,12 @@ export default function DashboardPage() {
 
             {/* EXPORT CSV */}
             <motion.button
-              whileHover={exporting ? undefined : { scale: 1.03, y: -2 }}
-              whileTap={exporting ? undefined : { scale: 0.97 }}
+              whileHover={exporting || !inspection ? undefined : { scale: 1.03, y: -2 }}
+              whileTap={exporting || !inspection ? undefined : { scale: 0.97 }}
               onClick={handleExportCsv}
-              disabled={exporting}
+              disabled={exporting || !inspection}
               className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
-                exporting
+                exporting || !inspection
                   ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
                   : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
               }`}
@@ -995,7 +1012,7 @@ export default function DashboardPage() {
               ) : (
                 <Download className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
               )}
-              {exporting ? "Exporting..." : "Export CSV"}
+              {exporting ? "Exporting..." : "Export Data"}
             </motion.button>
 
             {/* CAPTURE SNAPSHOT */}
@@ -1831,9 +1848,12 @@ export default function DashboardPage() {
               </span>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-5 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5 items-stretch [grid-template-columns:repeat(1,minmax(0,1fr))] lg:[grid-template-columns:repeat(2,minmax(0,1fr))]">
             {/* 1. Heatmap Visualization */}
-            <HeatmapPanel inspection={inspection} />
+            <HeatmapPanel
+              inspection={inspection}
+              className="min-h-[480px] h-[500px] lg:h-[520px]"
+            />
 
             {/* 2. XAI Explanation */}
             <XAIExplanationPanel
@@ -1852,16 +1872,23 @@ export default function DashboardPage() {
                 inspection?.xai?.visualization ||
                 null
               }
+              className="min-h-[480px] h-[500px] lg:h-[520px]"
             />
 
             {/* 3. OCR Results */}
-            <ODCResultsPanel inspection={inspection} />
+            <ODCResultsPanel
+              inspection={inspection}
+              className="min-h-[480px] h-[500px] lg:h-[520px]"
+            />
 
             {/* 4. Final Inspection Decision */}
             <InspectionDecisionPanel
               inspection={inspection}
               onGenerateReport={handleGenerateReport}
               onExport={handleExportCsv}
+              generating={generating}
+              exporting={exporting}
+              className="min-h-[480px] h-[500px] lg:h-[520px]"
             />
           </div>
         </motion.div>

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { reportApi } from "../services/api/reportApi";
+import API_CONFIG from "../config/api";
 import { toErrorMessage } from "../utils/apiError";
 
 const triggerDownload = (url, filename) => {
@@ -36,12 +37,15 @@ export function useReport() {
     try {
       const response = await reportApi.generateReport(inspection, options);
       setResult(response);
+
+      // Mock mode returns an object URL for the blob
       if (response?.downloadUrl) {
         triggerDownload(
           response.downloadUrl,
           response.filename || `PCBVision_Inspection_Report_${inspection?.pcbId || "PCB"}.pdf`,
         );
       }
+
       return { ok: true, result: response };
     } catch (err) {
       const message = toErrorMessage(err, "Unable to generate report.");

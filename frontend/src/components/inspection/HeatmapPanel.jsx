@@ -18,11 +18,11 @@ export default function HeatmapPanel({
   if (!inspection) {
     return (
       <GlassCard
-        className={`flex flex-col h-full space-y-3 ${className}`}
+        className={`flex flex-col h-full ${className}`}
         contentClassName="h-full flex flex-col min-h-0 w-full"
         hoverLift={false}
       >
-        <div className="flex items-center gap-2 border-b border-accent/5 pb-2">
+        <div className="flex items-center gap-2 border-b border-accent/5 pb-2 shrink-0">
           <Layers className="w-3.5 h-3.5 text-accent" />
 
           <span className="font-display text-[10px] tracking-widest text-white uppercase font-bold">
@@ -45,7 +45,6 @@ export default function HeatmapPanel({
     );
   }
 
-  
   const toImageUrl = (path) => {
     if (!path || typeof path !== "string") return null;
 
@@ -60,7 +59,6 @@ export default function HeatmapPanel({
 
     return `${apiBase}/inspection/image?path=${encodeURIComponent(imagePath)}`;
   };
-
 
   const xai = inspection?.xai || {};
 
@@ -140,11 +138,11 @@ export default function HeatmapPanel({
   if (!currentView) {
     return (
       <GlassCard
-        className={`flex flex-col h-full space-y-3 ${className}`}
+        className={`flex flex-col h-full ${className}`}
         contentClassName="h-full flex flex-col min-h-0 w-full"
         hoverLift={false}
       >
-        <div className="flex items-center gap-2 border-b border-accent/5 pb-2">
+        <div className="flex items-center gap-2 border-b border-accent/5 pb-2 shrink-0">
           <Layers className="w-3.5 h-3.5 text-accent" />
 
           <span className="font-display text-[10px] tracking-widest text-white uppercase font-bold">
@@ -165,13 +163,12 @@ export default function HeatmapPanel({
 
   return (
     <GlassCard
-      className={`flex flex-col h-full space-y-3 ${className}`}
+      className={`flex flex-col h-full ${className}`}
       contentClassName="h-full flex flex-col min-h-0 w-full"
       hoverLift={false}
     >
       {/* HEADER */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-accent/5 pb-2">
-
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-accent/5 pb-2.5 shrink-0">
         <div className="flex items-center gap-2">
           <Layers className="w-3.5 h-3.5 text-accent" />
 
@@ -181,7 +178,6 @@ export default function HeatmapPanel({
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
-
           {views.map((view) => {
             const Icon = view.icon;
 
@@ -189,9 +185,7 @@ export default function HeatmapPanel({
               <button
                 key={view.id}
                 type="button"
-                onClick={() =>
-                  setViewMode(view.id)
-                }
+                onClick={() => setViewMode(view.id)}
                 className={`flex items-center gap-1 px-2 py-1 rounded text-[8px] font-mono font-bold uppercase tracking-wider transition-all ${
                   viewMode === view.id
                     ? "bg-accent/20 text-accent border border-accent/30"
@@ -207,118 +201,117 @@ export default function HeatmapPanel({
         </div>
       </div>
 
-      {/* IMAGE */}
-      <div className="relative h-80 bg-black/90 overflow-hidden flex items-center justify-center">
-
-        <img
-          src={currentView.url}
-          alt={currentView.label}
-          className="block max-h-full max-w-full w-full h-full object-contain"
-        />
-
-      </div>
-
-      {/* LEGEND */}
-      <div className="flex flex-wrap items-center gap-3 px-1 py-2 text-[8px] font-mono text-slate-500">
-
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-accent" />
-          High Attention / Heat
-        </span>
-
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-slate-700 border border-slate-500" />
-          Low Attention / Cool
-        </span>
-
-        <span className="ml-auto text-slate-600">
-          Source: {currentView.label}
-        </span>
-      </div>
-
-      {/* XAI METADATA */}
-      {viewMode === "heatmap" && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-[8px] font-mono">
-
-          <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
-            <span className="text-slate-500 uppercase">
-              Status
-            </span>
-
-            <p className="text-success font-bold mt-1">
-              {xai?.status || "SUCCESS"}
-            </p>
-          </div>
-
-          <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
-            <span className="text-slate-500 uppercase">
-              Mode
-            </span>
-
-            <p className="text-white font-bold mt-1">
-              {xai?.mode || "model_derived"}
-            </p>
-          </div>
-
-          <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
-            <span className="text-slate-500 uppercase">
-              Target Class
-            </span>
-
-            <p className="text-white font-bold mt-1">
-              {xai?.class_name ??
-                xai?.className ??
-                (xai?.class_id != null ? "Class " + xai.class_id : "—")}
-            </p>
-          </div>
-
-          <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
-            <span className="text-slate-500 uppercase">
-              Processing
-            </span>
-
-            <p className="text-accent font-bold mt-1">
-              {xai?.processing_time != null
-                ? `${Number(
-                    xai.processing_time
-                  ).toFixed(2)}s`
-                : "—"}
-            </p>
-          </div>
-
-          <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
-            <span className="text-slate-500 uppercase">
-              Heatmap
-            </span>
-
-            <p className="text-success font-bold mt-1">
-              {heatmapUrl
-                ? "AVAILABLE"
-                : "—"}
-            </p>
-          </div>
-
-          <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
-            <span className="text-slate-500 uppercase">
-              Overlay
-            </span>
-
-            <p className="text-success font-bold mt-1">
-              {overlayUrl
-                ? "AVAILABLE"
-                : "—"}
-            </p>
-          </div>
+      {/* SCROLLABLE INNER BODY CONTAINER */}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pt-3 space-y-3 pr-1 custom-scrollbar">
+        {/* IMAGE */}
+        <div className="relative h-64 sm:h-72 rounded-lg bg-black/90 overflow-hidden flex items-center justify-center border border-accent/10 shrink-0">
+          <img
+            src={currentView.url}
+            alt={currentView.label}
+            className="block max-h-full max-w-full w-full h-full object-contain"
+          />
         </div>
-      )}
 
-      {viewMode === "thermal" && (
-        <div className="pt-2 border-t border-accent/5 text-center">
-          <p className="font-mono text-[8px] text-slate-500">
-            Thermal visualization source.
-          </p>
+        {/* LEGEND */}
+        <div className="flex flex-wrap items-center gap-3 px-1 py-1 text-[8px] font-mono text-slate-500">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-accent" />
+            High Attention / Heat
+          </span>
+
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-slate-700 border border-slate-500" />
+            Low Attention / Cool
+          </span>
+
+          <span className="ml-auto text-slate-600">
+            Source: {currentView.label}
+          </span>
         </div>
-      )}
+
+        {/* XAI METADATA */}
+        {viewMode === "heatmap" && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-[8px] font-mono">
+            <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
+              <span className="text-slate-500 uppercase">
+                Status
+              </span>
+
+              <p className="text-success font-bold mt-1">
+                {xai?.status || "SUCCESS"}
+              </p>
+            </div>
+
+            <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
+              <span className="text-slate-500 uppercase">
+                Mode
+              </span>
+
+              <p className="text-white font-bold mt-1">
+                {xai?.mode || "model_derived"}
+              </p>
+            </div>
+
+            <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
+              <span className="text-slate-500 uppercase">
+                Target Class
+              </span>
+
+              <p className="text-white font-bold mt-1 break-words [overflow-wrap:anywhere]">
+                {xai?.class_name ??
+                  xai?.className ??
+                  (xai?.class_id != null ? "Class " + xai.class_id : "—")}
+              </p>
+            </div>
+
+            <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
+              <span className="text-slate-500 uppercase">
+                Processing
+              </span>
+
+              <p className="text-accent font-bold mt-1">
+                {xai?.processing_time != null
+                  ? `${Number(
+                      xai.processing_time
+                    ).toFixed(2)}s`
+                  : "—"}
+              </p>
+            </div>
+
+            <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
+              <span className="text-slate-500 uppercase">
+                Heatmap
+              </span>
+
+              <p className="text-success font-bold mt-1">
+                {heatmapUrl
+                  ? "AVAILABLE"
+                  : "—"}
+              </p>
+            </div>
+
+            <div className="rounded border border-accent/10 bg-[#050816]/40 p-2">
+              <span className="text-slate-500 uppercase">
+                Overlay
+              </span>
+
+              <p className="text-success font-bold mt-1">
+                {overlayUrl
+                  ? "AVAILABLE"
+                  : "—"}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {viewMode === "thermal" && (
+          <div className="pt-2 border-t border-accent/5 text-center">
+            <p className="font-mono text-[8px] text-slate-500">
+              Thermal visualization source.
+            </p>
+          </div>
+        )}
+      </div>
     </GlassCard>
   );
 }

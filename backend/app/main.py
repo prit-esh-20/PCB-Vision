@@ -4,6 +4,7 @@ from pathlib import Path
 import psutil
 import time
 import csv
+import json
 from io import StringIO
 from datetime import datetime, timezone, timedelta
 from app.rpi_client import (
@@ -447,6 +448,169 @@ def export_inspection_csv(
 
     return response
 
+
+@app.get("/api/inspection/{inspection_id}/export/csv")
+def export_single_inspection_csv(
+    inspection_id: int,
+    db: Session = Depends(get_db)
+):
+    """Export a single inspection as CSV with all detections and details."""
+    inspection = (
+        db.query(Inspection)
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+
+    detections = (
+        db.query(Detection)
+        .filter(Detection.inspection_id == inspection_id)
+        .all()
+    )
+
+    output = StringIO()
+    writer = csv.writer(output)
+
+    # Inspection metadata row (first row)
+    writer.writerow([
+        "Inspection ID",
+        "Board ID",
+        "Image Name",
+        "Model",
+        "Status",
+        "Confidence (%)",
+        "Defect Class",
+        "Inspection Time (s)",
+        "XAI Explanation",
+        "Created At",
+        "Detection Count",
+    ])
+
+    writer.writerow([
+        inspection.id,
+        inspection.board_id,
+        inspection.image_name or "N/A",
+        inspection.model_name or "N/A",
+        inspection.status or "N/A",
+        f"{inspection.confidence:.2f}" if inspection.confidence is not None else "N/A",
+        inspection.defect_class or "None detected",
+        f"{inspection.inspection_time:.2f}" if inspection.inspection_time is not None else "N/A",
+        inspection.xai_explanation or "N/A",
+        inspection.created_at.isoformat() if inspection.created_at else "N/A",
+        len(detections),
+    ])
+
+    # If there are detections, add them as separate rows
+    if detections:
+        writer.writerow([])  # Empty row separator
+        writer.writerow([
+            "Detection ID",
+            "Class Name",
+            "Confidence (%)",
+            "X Min",
+            "Y Min",
+            "X Max",
+            "Y Max",
+            "Detection Type",
+        ])
+
+        for detection in detections:
+            writer.writerow([
+                detection.id,
+                detection.class_name,
+                f"{detection.confidence:.2f}" if detection.confidence is not None else "N/A",
+                detection.x_min if detection.x_min is not None else "N/A",
+                detection.y_min if detection.y_min is not None else "N/A",
+                detection.x_max if detection.x_max is not None else "N/A",
+                detection.y_max if detection.y_max is not None else "N/A",
+                detection.detection_type or "YOLO",
+            ])
+
+    output.seek(0)
+
+    response = StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+    )
+
+    safe_board_id = (inspection.board_id or "PCB").replace("/", "-").replace("\\", "-")
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="PCBVision_Inspection_{safe_board_id}.csv"'
+    )
+
+    response.headers["X-Total-Records"] = str(1 + len(detections))
+
+    return response
+
+
+@app.get("/api/inspection/{inspection_id}/export/json")
+def export_single_inspection_json(
+    inspection_id: int,
+    db: Session = Depends(get_db)
+):
+    """Export a single inspection as JSON with all detections and details."""
+    inspection = (
+        db.query(Inspection)
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+
+    detections = (
+        db.query(Detection)
+        .filter(Detection.inspection_id == inspection_id)
+        .all()
+    )
+
+    # Build structured JSON response
+    detection_list = []
+    for detection in detections:
+        detection_list.append({
+            "id": detection.id,
+            "class_name": detection.class_name,
+            "confidence": detection.confidence,
+            "bbox": {
+                "x_min": detection.x_min,
+                "y_min": detection.y_min,
+                "x_max": detection.x_max,
+                "y_max": detection.y_max,
+            },
+            "detection_type": detection.detection_type or "YOLO",
+        })
+
+    result = {
+        "inspection": {
+            "id": inspection.id,
+            "board_id": inspection.board_id,
+            "image_name": inspection.image_name,
+            "model_name": inspection.model_name,
+            "status": inspection.status,
+            "confidence": inspection.confidence,
+            "defect_class": inspection.defect_class,
+            "inspection_time": inspection.inspection_time,
+            "xai_explanation": inspection.xai_explanation,
+            "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
+        },
+        "detections": detection_list,
+        "detection_count": len(detection_list),
+    }
+
+    response = Response(
+        content=json.dumps(result, indent=2, default=str),
+        media_type="application/json",
+    )
+
+    safe_board_id = (inspection.board_id or "PCB").replace("/", "-").replace("\\", "-")
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="PCBVision_Inspection_{safe_board_id}.json"'
+    )
+
+    return response
+
 @app.get("/api/inspection-history")
 def get_inspection_history(
     page: int = Query(1, ge=1),
@@ -835,23 +999,17 @@ def get_reports(
         for report in reports
     ]
 
-@app.post("/api/reports")
-def create_report(
-    report_data: dict,
-    db: Session = Depends(get_db)
+def _generate_inspection_report(
+    inspection,
+    report_data,
+    db,
+    reports_dir,
 ):
-    inspection = (
-        db.query(Inspection)
-        .order_by(Inspection.created_at.desc())
-        .first()
-    )
+    """Build a PDF report for a specific inspection and persist a Report row.
 
-    if not inspection:
-        return {
-            "status": "ERROR",
-            "message": "No inspection data available to generate report."
-        }
-
+    Reused by both the legacy POST /reports endpoint (latest inspection) and
+    the new POST /reports/generate endpoint (specific inspection id).
+    """
     # ---------------------------------------------------------
     # Report identity and file location
     # ---------------------------------------------------------
@@ -859,9 +1017,7 @@ def create_report(
     report_id = f"RPT-{uuid.uuid4().hex[:8].upper()}"
     filename = f"{report_id}.pdf"
 
-    reports_dir = UPLOAD_DIR / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
-
     file_path = reports_dir / filename
 
     # ---------------------------------------------------------
@@ -1802,6 +1958,69 @@ def create_report(
         "createdAt": report.created_at,
         "downloadUrl": f"/api/reports/{report.id}/download",
     }
+
+
+@app.post("/api/reports")
+def create_report(
+    report_data: dict,
+    db: Session = Depends(get_db)
+):
+    inspection = (
+        db.query(Inspection)
+        .order_by(Inspection.created_at.desc())
+        .first()
+    )
+
+    if not inspection:
+        return {
+            "status": "ERROR",
+            "message": "No inspection data available to generate report."
+        }
+
+    reports_dir = UPLOAD_DIR / "reports"
+    return _generate_inspection_report(inspection, report_data, db, reports_dir)
+
+
+@app.post("/api/reports/generate")
+def generate_report(
+    payload: dict,
+    db: Session = Depends(get_db)
+):
+    """Generate a downloadable PDF report for a specific inspection.
+
+    The inspection id is taken from the request body so the Dashboard can
+    request a report for the inspection currently displayed on screen. Falls
+    back to the latest inspection when no id is supplied.
+    """
+    inspection_id = payload.get("inspectionId") or payload.get("inspection_id")
+    inspection = None
+
+    if inspection_id is not None:
+        try:
+            inspection = (
+                db.query(Inspection)
+                .filter(Inspection.id == int(inspection_id))
+                .first()
+            )
+        except (TypeError, ValueError):
+            inspection = None
+
+    if inspection is None:
+        inspection = (
+            db.query(Inspection)
+            .order_by(Inspection.created_at.desc())
+            .first()
+        )
+
+    if not inspection:
+        return {
+            "status": "ERROR",
+            "message": "No inspection data available to generate report."
+        }
+
+    reports_dir = UPLOAD_DIR / "reports"
+    return _generate_inspection_report(inspection, payload, db, reports_dir)
+
 
 @app.get("/api/reports/{report_id}")
 def get_report(

@@ -32,6 +32,12 @@ export const SCAN_PHASE = {
 // Single, sequential scan timeline. Horizontal and vertical never overlap:
 //   horizontal: progress 0%  → 50%
 //   vertical:   progress 50% → 100%
+//
+// The scan loops CONTINUOUSLY while the inspection is in progress. It is NOT
+// time-based: the animation never stops because a fixed timeout elapsed. It
+// only stops when the actual inspection result arrives (COMPLETED / ERROR) or
+// the inspection is reset/cancelled. This guarantees the animation reflects
+// the real backend lifecycle, not an arbitrary duration.
 const HORIZONTAL_MS = 2600;
 const VERTICAL_MS = 2600;
 const TOTAL_SCAN_MS = HORIZONTAL_MS + VERTICAL_MS;
@@ -95,17 +101,33 @@ const cancelTimeline = () => {
 
 // One rAF-driven timeline for the whole scan. Computes BOTH the active phase
 // and the progress from elapsed time — no independent timers that can overlap.
+//
+// The timeline LOOPS continuously while the inspection is in progress. It
+// never stops on its own: the animation only stops when the actual inspection
+// result arrives (COMPLETED / ERROR) or the inspection is reset/cancelled.
 const startScanTimeline = () => {
   cancelTimeline();
   const start = performance.now();
 
   const tick = (now) => {
-    const elapsed = now - start;
-    if (elapsed >= TOTAL_SCAN_MS) {
+    // Only advance the animation while the inspection is actually in progress.
+    // If the inspection has already completed or failed (state changed while
+    // the animation was running), stop the loop and freeze the progress.
+    if (
+      snapshot.state !== INSPECTION_STATE.STARTING &&
+      snapshot.state !== INSPECTION_STATE.INSPECTING
+    ) {
       rafId = null;
-      patch({ scanPhase: SCAN_PHASE.COMPLETE, scanProgress: 100 });
       return;
     }
+
+    let elapsed = now - start;
+
+    // Loop continuously while the inspection is in progress.
+    if (elapsed >= TOTAL_SCAN_MS) {
+      elapsed -= TOTAL_SCAN_MS;
+    }
+
     if (elapsed < HORIZONTAL_MS) {
       patch({
         scanPhase: SCAN_PHASE.HORIZONTAL,
@@ -172,16 +194,22 @@ const runInspection = async (payload) => {
       return { ok: false, message: "Inspection cancelled." };
     }
     const { inspection: next, state: nextState, error: nextError } = normalizeInspection(response);
+    // Stop the continuous scan timeline when the actual result arrives —
+    // COMPLETED or ERROR. Never stop the animation because a fixed timeout
+    // elapsed; only stop it because the real backend response arrived.
+    if (nextState === INSPECTION_STATE.ERROR) {
+      stopScanWithError(nextError || null, "Inspection failed.");
+      return { ok: false, message: nextError || "Inspection failed." };
+    }
+    cancelTimeline();
     patch({
       inspection: next,
       error: nextError || null,
       errorMessage: nextError || null,
       state: nextState,
+      scanPhase: SCAN_PHASE.IDLE,
+      scanProgress: 0,
     });
-    if (nextState === INSPECTION_STATE.ERROR) {
-      stopScanWithError(nextError || null, "Inspection failed.");
-      return { ok: false, message: nextError || "Inspection failed." };
-    }
     return { ok: true, inspection: next, state: nextState };
   } catch (err) {
     if (generation !== runGeneration) {
@@ -263,13 +291,9 @@ const runUploadedInspection = async (file) => {
       error: nextError,
     } = normalizeInspection(response);
 
-    patch({
-      inspection: next,
-      error: nextError || null,
-      errorMessage: nextError || null,
-      state: nextState,
-    });
-
+    // Stop the continuous scan timeline when the actual result arrives —
+    // COMPLETED or ERROR. Never stop the animation because a fixed timeout
+    // elapsed; only stop it because the real backend response arrived.
     if (nextState === INSPECTION_STATE.ERROR) {
       stopScanWithError(
         nextError || null,
@@ -281,6 +305,16 @@ const runUploadedInspection = async (file) => {
         message: nextError || "Inspection failed.",
       };
     }
+
+    cancelTimeline();
+    patch({
+      inspection: next,
+      error: nextError || null,
+      errorMessage: nextError || null,
+      state: nextState,
+      scanPhase: SCAN_PHASE.IDLE,
+      scanProgress: 0,
+    });
 
     return {
       ok: true,
@@ -321,7 +355,14 @@ const refreshInspection = async () => {
   patch({ error: null });
   try {
     const result = await inspectionApi.getLatestInspection();
-    patch({ inspection: result, state: INSPECTION_STATE.COMPLETED });
+    // Stop the continuous scan timeline when the actual result arrives.
+    cancelTimeline();
+    patch({
+      inspection: result,
+      state: INSPECTION_STATE.COMPLETED,
+      scanPhase: SCAN_PHASE.IDLE,
+      scanProgress: 0,
+    });
     return { ok: true, inspection: result };
   } catch (err) {
     patch({ error: err, errorMessage: toErrorMessage(err, "Unable to load inspection.") });

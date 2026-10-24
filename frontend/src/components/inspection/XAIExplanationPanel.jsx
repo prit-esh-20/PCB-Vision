@@ -34,9 +34,10 @@ export default function XAIExplanationPanel({
     return (
       <GlassCard
         className={`flex flex-col h-full !p-5 ${className}`}
+        contentClassName="h-full flex flex-col min-h-0 w-full"
         hoverLift={false}
       >
-        <div className="flex items-center gap-2 border-b border-accent/5 pb-2.5">
+        <div className="flex items-center gap-2 border-b border-accent/5 pb-2.5 shrink-0">
           <Sparkles className="h-4 w-4 text-accent" />
 
           <span className="font-display text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -203,10 +204,11 @@ export default function XAIExplanationPanel({
   return (
     <GlassCard
       className={`flex flex-col h-full !p-5 ${className}`}
+      contentClassName="h-full flex flex-col min-h-0 w-full"
       hoverLift={false}
     >
       {/* HEADER */}
-      <div className="flex items-center gap-2 border-b border-accent/5 pb-2.5">
+      <div className="flex items-center gap-2 border-b border-accent/5 pb-2.5 shrink-0">
         <Sparkles className="h-4 w-4 text-accent" />
 
         <span className="font-display text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -224,24 +226,23 @@ export default function XAIExplanationPanel({
         </span>
       </div>
 
-      <div className="mt-3 overflow-y-auto max-h-[420px] pr-1 custom-scrollbar space-y-4">
-
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden mt-3 pr-1.5 custom-scrollbar space-y-4">
         {/* PCB VALIDATION */}
         {isNotPcb ? (
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <AlertTriangle className="h-3.5 w-3.5 text-danger" />
+              <AlertTriangle className="h-3.5 w-3.5 text-danger shrink-0" />
 
               <label className="font-mono text-[9px] text-danger uppercase tracking-widest block font-bold">
                 What's Wrong?
               </label>
             </div>
 
-            <p className="font-sans text-[11px] text-slate-300 leading-relaxed">
+            <p className="font-sans text-[11px] text-slate-300 leading-relaxed break-words [overflow-wrap:anywhere]">
               {whatWrong}
             </p>
 
-            <p className="font-sans text-[10px] text-slate-500 leading-relaxed">
+            <p className="font-sans text-[10px] text-slate-500 leading-relaxed break-words [overflow-wrap:anywhere]">
               Try uploading a clear, well-lit image of the PCB and rerun the
               inspection.
             </p>
@@ -252,7 +253,7 @@ export default function XAIExplanationPanel({
             <div className="space-y-1.5">
               <div className="flex items-center gap-1.5">
                 <AlertTriangle
-                  className={`h-3.5 w-3.5 ${
+                  className={`h-3.5 w-3.5 shrink-0 ${
                     isPass ? "text-success" : "text-danger"
                   }`}
                 />
@@ -262,11 +263,11 @@ export default function XAIExplanationPanel({
                 </label>
 
                 {!isPass && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-danger led-slow" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-danger led-slow shrink-0" />
                 )}
               </div>
 
-              <p className="font-sans text-[11px] text-slate-300 leading-relaxed">
+              <p className="font-sans text-[11px] text-slate-300 leading-relaxed break-words [overflow-wrap:anywhere]">
                 {whatWrong}
               </p>
             </div>
@@ -278,7 +279,7 @@ export default function XAIExplanationPanel({
                   Pass Rationale
                 </label>
 
-                <p className="font-sans text-[11px] text-slate-300 leading-relaxed">
+                <p className="font-sans text-[11px] text-slate-300 leading-relaxed break-words [overflow-wrap:anywhere]">
                   {whyPass}
                 </p>
               </div>
@@ -288,14 +289,14 @@ export default function XAIExplanationPanel({
             {!isPass && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 text-warning" />
+                  <MapPin className="h-3.5 w-3.5 text-warning shrink-0" />
 
                   <label className="font-mono text-[9px] text-warning uppercase tracking-widest block font-bold">
                     Where Is It?
                   </label>
                 </div>
 
-                <p className="font-sans text-[11px] text-slate-300 leading-relaxed">
+                <p className="font-sans text-[11px] text-slate-300 leading-relaxed break-words [overflow-wrap:anywhere]">
                   {where}
                 </p>
               </div>
@@ -308,7 +309,7 @@ export default function XAIExplanationPanel({
               </label>
 
               {overlayUrl ? (
-                <div className="relative w-full rounded-lg bg-black/90 overflow-hidden">
+                <div className="relative w-full rounded-lg bg-black/90 overflow-hidden border border-accent/10">
                   <div
                     className="absolute inset-0 opacity-20 pointer-events-none"
                     style={{
@@ -325,7 +326,7 @@ export default function XAIExplanationPanel({
                   />
                 </div>
               ) : (
-                <div className="relative w-full h-[220px] rounded-lg bg-black/90 overflow-hidden">
+                <div className="relative w-full h-[220px] rounded-lg bg-black/90 overflow-hidden border border-accent/10">
                   <span className="absolute inset-0 flex items-center justify-center px-4 text-center font-mono text-[9px] text-slate-600">
                     {xaiStatus === "completed" ||
                     xaiStatus === "success"
@@ -335,7 +336,7 @@ export default function XAIExplanationPanel({
                 </div>
               )}
 
-              <p className="font-sans text-[10px] text-slate-500 leading-relaxed">
+              <p className="font-sans text-[10px] text-slate-500 leading-relaxed break-words [overflow-wrap:anywhere]">
                 Highlighted region shows where the model focused during
                 inspection.
               </p>
@@ -345,7 +346,7 @@ export default function XAIExplanationPanel({
             {missingComponents.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5">
-                  <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                  <AlertTriangle className="h-3.5 w-3.5 text-warning shrink-0" />
 
                   <label className="font-mono text-[9px] text-warning uppercase tracking-widest block font-bold">
                     Missing Components
@@ -356,7 +357,7 @@ export default function XAIExplanationPanel({
                   {missingComponents.map((comp, idx) => (
                     <span
                       key={idx}
-                      className="px-2 py-0.5 rounded bg-warning/15 border border-warning/30 text-warning font-mono text-[8px]"
+                      className="px-2 py-0.5 rounded bg-warning/15 border border-warning/30 text-warning font-mono text-[8px] break-words [overflow-wrap:anywhere]"
                     >
                       {comp}
                     </span>
@@ -368,14 +369,14 @@ export default function XAIExplanationPanel({
             {/* CORRECTIVE ACTION */}
             <div className="space-y-1.5">
               <div className="flex items-center gap-1.5">
-                <Lightbulb className="h-3.5 w-3.5 text-accent" />
+                <Lightbulb className="h-3.5 w-3.5 text-accent shrink-0" />
 
                 <label className="font-mono text-[9px] text-accent uppercase tracking-widest block font-bold">
                   How To Fix It?
                 </label>
               </div>
 
-              <p className="font-sans text-[11px] text-slate-300 leading-relaxed">
+              <p className="font-sans text-[11px] text-slate-300 leading-relaxed break-words [overflow-wrap:anywhere]">
                 {fix}
               </p>
             </div>
