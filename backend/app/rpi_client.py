@@ -131,7 +131,7 @@ async def capture_rpi_image() -> bytes:
     try:
 
         async with httpx.AsyncClient(
-            timeout=180.0
+            timeout=None
         ) as client:
 
             response = await client.post(
@@ -200,7 +200,7 @@ async def create_rpi_template(
             )
 
         async with httpx.AsyncClient(
-            timeout=120.0
+            timeout=None
         ) as client:
 
             response = await client.post(
@@ -267,7 +267,7 @@ async def run_rpi_inspection() -> dict:
     try:
 
         async with httpx.AsyncClient(
-            timeout=180.0
+            timeout=None
         ) as client:
 
             response = await client.post(
