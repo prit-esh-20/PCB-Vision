@@ -8,17 +8,22 @@ import { useScanProgress } from "../../hooks/useInspection";
 //   phase = "horizontal" → single horizontal line sweeps TOP → BOTTOM
 //   phase = "vertical"   → single vertical line sweeps LEFT → RIGHT
 //
-// Progress comes from the shared inspection store (0-50 during the horizontal
-// pass, 50-100 during the vertical pass) and is normalized to the active
-// phase so each line makes ONE complete pass across the PCB area.
+// The scan timeline is now CSS-driven: a continuous @keyframes loop runs while
+// the animation is enabled. Animation is started/stopped by toggling the
+// `scan-running` CSS class on the overlay container, controlled from the
+// inspection state. No requestAnimationFrame timers needed.
 //
-// The scan timeline loops CONTINUOUSLY while the inspection is in progress.
-// It never stops on its own: the animation only stops when the actual
-// inspection result arrives (COMPLETED / ERROR) or the inspection is
-// reset/cancelled. This guarantees the animation reflects the real backend
-// lifecycle, not an arbitrary duration.
+// The scan line clips to the image viewport and does not spill into surrounding UI.
+// Uses neon-green glow effect consistent with PCBVisual brand colors.
 export default function ScanningOverlay({ phase }) {
   const progress = useScanProgress();
+
+  // Determine if animation should be running based on inspection state.
+  // Animation runs while inspection is STARTING or INSPECTING.
+  // It stops when result arrives (COMPLETED/ERROR) or inspection is reset.
+  const isRunning =
+    progress !== undefined &&
+    (progress > 0 || phase !== "idle");
 
   const localProgress =
     phase === "horizontal"
@@ -27,17 +32,18 @@ export default function ScanningOverlay({ phase }) {
 
   const line = Math.min(100, Math.max(0, localProgress));
 
+  const overlayClass = isRunning ? "scan-overlay running" : "scan-overlay paused";
+
   return (
     <div
       data-scanning-overlay
-      className="pointer-events-none absolute inset-0 z-[10]"
+      className={`pointer-events-none absolute inset-0 z-[10] ${overlayClass}`}
     >
       {/* Phase 1: horizontal scan line — TOP → BOTTOM. */}
       {phase === "horizontal" && (
         <div
           data-scan-axis="h"
           className="scan-axis-h z-[11]"
-          style={{ transform: `translateY(calc(${line}% - 100%))` }}
         >
           <div data-scan-line="h" className="scan-line-h" />
         </div>
@@ -48,7 +54,6 @@ export default function ScanningOverlay({ phase }) {
         <div
           data-scan-axis="v"
           className="scan-axis-v z-[11]"
-          style={{ transform: `translateX(calc(${line}% - 100%))` }}
         >
           <div data-scan-line="v" className="scan-line-v" />
         </div>

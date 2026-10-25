@@ -2,7 +2,7 @@ import API_CONFIG from "../../config/api";
 import apiClient from "../apiClient";
 import { uploadMock } from "../mock/uploadMock";
 
-// Upload service for PCB inspection and template creation.
+// Upload service for PCB inspection and Raspberry Pi template capture.
 export const uploadApi = {
   async inspectUploadedImage(file) {
     if (API_CONFIG.useMock) {
@@ -29,10 +29,8 @@ export const uploadApi = {
     return data;
   },
 
-  async createTemplate({
-    templateName,
-    expectedImages,
-  }) {
+  // Step 1: Start a template capture session.
+  async startTemplate({ templateName, expectedImages }) {
     if (API_CONFIG.useMock) {
       throw new Error(
         "Template creation requires the real backend."
@@ -51,26 +49,65 @@ export const uploadApi = {
       );
     }
 
-    const formData = new FormData();
-
-    formData.append(
-      "template_name",
-      templateName.trim()
+    const { data } = await apiClient.post(
+      "/template/start",
+      {
+        template_name: templateName.trim(),
+        expected_images: imageCount,
+      }
     );
 
-    formData.append(
-      "expected_images",
-      String(imageCount)
-    );
+    if (!data.session_id) {
+      throw new Error(
+        "Backend did not return a template session ID."
+      );
+    }
+
+    return data;
+  },
+
+  // Step 2: Capture exactly one image per function call.
+  async captureTemplateImage(sessionId) {
+    if (API_CONFIG.useMock) {
+      throw new Error(
+        "Template capture requires the real backend."
+      );
+    }
+
+    if (!sessionId) {
+      throw new Error(
+        "No active template capture session."
+      );
+    }
 
     const { data } = await apiClient.post(
-      "/templates/create",
-      formData,
+      "/template/next",
       {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-        timeout: 0,
+        session_id: sessionId,
+      }
+    );
+
+    return data;
+  },
+
+  // Step 3: Finish and save after all images are captured.
+  async finishTemplate(sessionId) {
+    if (API_CONFIG.useMock) {
+      throw new Error(
+        "Template creation requires the real backend."
+      );
+    }
+
+    if (!sessionId) {
+      throw new Error(
+        "No active template capture session."
+      );
+    }
+
+    const { data } = await apiClient.post(
+      "/template/finish",
+      {
+        session_id: sessionId,
       }
     );
 

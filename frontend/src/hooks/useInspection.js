@@ -124,9 +124,10 @@ const startScanTimeline = () => {
     let elapsed = now - start;
 
     // Loop continuously while the inspection is in progress.
-    if (elapsed >= TOTAL_SCAN_MS) {
-      elapsed -= TOTAL_SCAN_MS;
-    }
+    // Use modulo so the animation wraps correctly no matter how many
+    // cycles have elapsed — subtracting a single cycle would freeze the
+    // animation after ~2 iterations (elapsed could still be >= TOTAL_SCAN_MS).
+    elapsed = elapsed % TOTAL_SCAN_MS;
 
     if (elapsed < HORIZONTAL_MS) {
       patch({

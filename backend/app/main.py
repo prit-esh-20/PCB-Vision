@@ -11,7 +11,11 @@ from app.rpi_client import (
     check_rpi_connection,
     check_rpi_camera_status,
     capture_rpi_image,
-    create_rpi_template,
+    start_rpi_template,
+    capture_next_rpi_template_image,
+    finish_rpi_template,
+    cancel_rpi_template,
+    list_rpi_templates,
     run_rpi_inspection,
     run_rpi_uploaded_inspection,
     make_rpi_image_url,
@@ -20,37 +24,25 @@ from app.rpi_client import (
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from pathlib import Path
 from fastapi import HTTPException
 import uuid
 from template_models import TemplateSession
-from app.rpi_client import (
-    check_rpi_connection,
-    check_rpi_camera_status,
-    capture_rpi_image,
-    create_rpi_template,
-    run_rpi_inspection,
-    run_rpi_uploaded_inspection,
-)
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, File, Depends, FastAPI, Query
 from database import get_db
 from models import Inspection, Detection, Report, Notification
-from fastapi import Depends
 from sqlalchemy import text
-from sqlalchemy.orm import Session
-
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 
-from app.rpi_client import create_rpi_template
-
-from database import get_db
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-
 class CreateTemplateRequest(BaseModel):
     template_name: str = Field(min_length=1, max_length=100)
-    expected_images: int = Field(ge=1, le=50)
+    expected_images: int = Field(ge=4, le=5)
+
+class TemplateSessionRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=200)
+
+
 
 
 # Allow backend to import the project-level ML package
@@ -132,63 +124,237 @@ async def rpi_health():
     result = await check_rpi_connection()
     return result
 
-# Create a template session; Pi capture integration comes later.
+# Camera-driven template creation.
+# Each call to /next captures exactly one image on the Raspberry Pi.
+# Creating a template does not start inspection or activate the template.
 
-@app.post("/api/template/create", status_code=201)
-async def create_template(
-    template_name: str = Form(..., min_length=1, max_length=100),
-    expected_images: int = Form(..., ge=1, le=50),
-    reference_images: list[UploadFile] = File(...),
+@app.get("/api/templates")
+async def get_templates():
+    try:
+        return await list_rpi_templates()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not retrieve templates from Raspberry Pi: {exc}",
+        ) from exc
+
+
+@app.post("/api/template/start", status_code=201)
+async def start_template_creation(
+    request: CreateTemplateRequest,
     db: Session = Depends(get_db),
 ):
-    if len(reference_images) != expected_images:
-        raise HTTPException(
-            status_code=400,
-            detail="The number of uploaded images must match expected_images.",
-        )
-
-    for image in reference_images:
-        if image.content_type not in {
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-        }:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported image type: {image.filename}",
-            )
+    template_name = request.template_name.strip()
+    if not template_name:
+        raise HTTPException(status_code=400, detail="Template name cannot be blank.")
 
     try:
-        pi_result = await create_rpi_template(
+        pi_result = await start_rpi_template(
             template_name=template_name,
-            reference_images=reference_images,
+            expected_images=request.expected_images,
         )
     except Exception as exc:
         raise HTTPException(
             status_code=502,
-            detail=f"Raspberry Pi template creation failed: {exc}",
+            detail=f"Could not start template capture on Raspberry Pi: {exc}",
         ) from exc
 
-    template_id = f"TPL-{uuid.uuid4().hex[:12].upper()}"
+    session_id = pi_result.get("session_id")
+    if not session_id:
+        raise HTTPException(
+            status_code=502,
+            detail="Raspberry Pi did not return a template session ID.",
+        )
 
-    template_session = TemplateSession(
-        template_id=template_id,
-        expected_images=expected_images,
-        captured_images=len(reference_images),
-        status="PENDING",
+    # Store the Raspberry Pi session ID in the existing template_id field,
+    # avoiding a database schema migration.
+    db_record = TemplateSession(
+        template_id=str(session_id),
+        expected_images=request.expected_images,
+        captured_images=0,
+        status="IN_PROGRESS",
     )
 
-    db.add(template_session)
-    db.commit()
-    db.refresh(template_session)
+    try:
+        db.add(db_record)
+        db.commit()
+        db.refresh(db_record)
+    except Exception as exc:
+        db.rollback()
+        try:
+            await cancel_rpi_template(str(session_id))
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Template session could not be saved to the database: {exc}",
+        ) from exc
 
     return {
-        "message": "Template creation request forwarded to Raspberry Pi.",
-        "template_id": template_session.template_id,
+        "message": "Template capture session started.",
+        "session_id": str(session_id),
+        "template_id": db_record.template_id,
         "template_name": template_name,
-        "expected_images": template_session.expected_images,
-        "captured_images": template_session.captured_images,
-        "status": template_session.status,
+        "expected_images": db_record.expected_images,
+        "captured_images": db_record.captured_images,
+        "status": db_record.status,
+        "raspberry_pi_result": pi_result,
+    }
+
+
+@app.post("/api/template/next")
+async def capture_next_template_image(
+    request: TemplateSessionRequest,
+    db: Session = Depends(get_db),
+):
+    db_record = (
+        db.query(TemplateSession)
+        .filter(TemplateSession.template_id == request.session_id)
+        .first()
+    )
+    if not db_record:
+        raise HTTPException(status_code=404, detail="Template session not found.")
+    if db_record.status != "IN_PROGRESS":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Template session is not active (status: {db_record.status}).",
+        )
+    if db_record.captured_images >= db_record.expected_images:
+        raise HTTPException(
+            status_code=409,
+            detail="All requested reference images have already been captured.",
+        )
+
+    try:
+        pi_result = await capture_next_rpi_template_image(request.session_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Raspberry Pi template capture failed: {exc}",
+        ) from exc
+
+    captured = pi_result.get("captured_images")
+    if captured is None:
+        captured = pi_result.get("current_image")
+    if captured is None:
+        # The Pi endpoint successfully returned a capture; advance by one
+        # only if its response did not provide an explicit count.
+        captured = db_record.captured_images + 1
+
+    try:
+        db_record.captured_images = min(
+            int(captured),
+            db_record.expected_images,
+        )
+        db.commit()
+        db.refresh(db_record)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Capture succeeded on Raspberry Pi but database progress could not be saved: {exc}",
+        ) from exc
+
+    return {
+        "message": "Reference image captured.",
+        "session_id": request.session_id,
+        "expected_images": db_record.expected_images,
+        "captured_images": db_record.captured_images,
+        "status": db_record.status,
+        "capture": pi_result,
+    }
+
+
+@app.post("/api/template/finish")
+async def finish_template_creation(
+    request: TemplateSessionRequest,
+    db: Session = Depends(get_db),
+):
+    db_record = (
+        db.query(TemplateSession)
+        .filter(TemplateSession.template_id == request.session_id)
+        .first()
+    )
+    if not db_record:
+        raise HTTPException(status_code=404, detail="Template session not found.")
+    if db_record.status != "IN_PROGRESS":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Template session cannot be finished (status: {db_record.status}).",
+        )
+    if db_record.captured_images != db_record.expected_images:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Capture all {db_record.expected_images} images before finishing. "
+                f"Currently captured: {db_record.captured_images}."
+            ),
+        )
+
+    try:
+        pi_result = await finish_rpi_template(request.session_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Raspberry Pi could not build/save the template: {exc}",
+        ) from exc
+
+    db_record.status = "COMPLETED"
+    try:
+        db.commit()
+        db.refresh(db_record)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Template was saved on Raspberry Pi but database status update failed: {exc}",
+        ) from exc
+
+    return {
+        "message": "Template saved successfully. Inspection was not started.",
+        "session_id": request.session_id,
+        "template_id": db_record.template_id,
+        "expected_images": db_record.expected_images,
+        "captured_images": db_record.captured_images,
+        "status": db_record.status,
+        "raspberry_pi_result": pi_result,
+    }
+
+
+@app.post("/api/template/cancel")
+async def cancel_template_creation(
+    request: TemplateSessionRequest,
+    db: Session = Depends(get_db),
+):
+    db_record = (
+        db.query(TemplateSession)
+        .filter(TemplateSession.template_id == request.session_id)
+        .first()
+    )
+    if not db_record:
+        raise HTTPException(status_code=404, detail="Template session not found.")
+    if db_record.status == "COMPLETED":
+        raise HTTPException(
+            status_code=409,
+            detail="A completed template cannot be cancelled.",
+        )
+
+    try:
+        pi_result = await cancel_rpi_template(request.session_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Raspberry Pi could not cancel the template session: {exc}",
+        ) from exc
+
+    db_record.status = "CANCELLED"
+    db.commit()
+    db.refresh(db_record)
+
+    return {
+        "message": "Template capture session cancelled.",
+        "session_id": request.session_id,
+        "status": db_record.status,
         "raspberry_pi_result": pi_result,
     }
 
@@ -249,17 +415,6 @@ async def get_inspection_image(path: str):
             status_code=502,
             detail=f"Could not reach Raspberry Pi: {exc}",
         ) from exc
-
-    image_path = Path(path).resolve()
-    base_dir = Path("/home/pi4/PCBVISION").resolve()
-
-    if not image_path.is_relative_to(base_dir):
-        raise HTTPException(status_code=403, detail="Invalid image path")
-
-    if not image_path.is_file():
-        raise HTTPException(status_code=404, detail="Image not found")
-
-    return FileResponse(image_path)
 
 @app.get("/api/health")
 def health_check():

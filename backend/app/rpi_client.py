@@ -2,6 +2,7 @@ import os
 import mimetypes
 from pathlib import Path
 from urllib.parse import urlencode
+
 import httpx
 from dotenv import load_dotenv
 
@@ -18,6 +19,30 @@ RPI_BASE_URL = os.getenv("RPI_BASE_URL", "").rstrip("/")
 RPI_API_KEY = os.getenv("RPI_API_KEY", "")
 
 
+def _require_rpi_url():
+    if not RPI_BASE_URL:
+        raise RuntimeError(
+            "Raspberry Pi address is not configured."
+        )
+
+
+def _headers():
+    if RPI_API_KEY:
+        return {"X-API-Key": RPI_API_KEY}
+    return {}
+
+
+def _raise_rpi_error(response, operation):
+    try:
+        detail = response.json()
+    except Exception:
+        detail = response.text
+
+    raise RuntimeError(
+        f"{operation} failed (HTTP {response.status_code}): {detail}"
+    )
+
+
 # ============================================================
 # RASPBERRY PI HEALTH
 # ============================================================
@@ -30,14 +55,12 @@ async def check_rpi_connection() -> dict:
         }
 
     try:
-        async with httpx.AsyncClient(timeout=None) as client:
-
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(
-                f"{RPI_BASE_URL}/health"
+                f"{RPI_BASE_URL}/health",
+                headers=_headers(),
             )
-
             response.raise_for_status()
-
             data = response.json()
 
         return {
@@ -46,13 +69,10 @@ async def check_rpi_connection() -> dict:
             "details": data,
         }
 
-    except httpx.HTTPError as exc:
-
+    except (httpx.HTTPError, ValueError) as exc:
         return {
             "connected": False,
-            "message": (
-                f"Raspberry Pi connection failed: {exc}"
-            ),
+            "message": f"Raspberry Pi connection failed: {exc}",
         }
 
 
@@ -61,55 +81,37 @@ async def check_rpi_connection() -> dict:
 # ============================================================
 
 async def check_rpi_camera_status() -> dict:
-
     if not RPI_BASE_URL:
         return {
             "status": "ERROR",
             "connected": False,
-            "message": (
-                "Raspberry Pi address is not configured."
-            ),
+            "message": "Raspberry Pi address is not configured.",
         }
 
     try:
-
-        async with httpx.AsyncClient(
-            timeout=5.0
-        ) as client:
-
+        async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
-                f"{RPI_BASE_URL}/camera/status"
+                f"{RPI_BASE_URL}/camera/status",
+                headers=_headers(),
             )
-
             response.raise_for_status()
-
             data = response.json()
 
         return {
-            "status": data.get(
-                "status",
-                "UNKNOWN"
-            ),
-            "connected": data.get(
-                "connected",
-                False
-            ),
+            "status": data.get("status", "UNKNOWN"),
+            "connected": data.get("connected", False),
             "message": data.get(
                 "message",
-                "Camera status retrieved from Raspberry Pi."
+                "Camera status retrieved from Raspberry Pi.",
             ),
             "details": data,
         }
 
     except httpx.HTTPError as exc:
-
         return {
             "status": "DISCONNECTED",
             "connected": False,
-            "message": (
-                "Raspberry Pi camera status check failed: "
-                f"{exc}"
-            ),
+            "message": f"Camera status check failed: {exc}",
         }
 
 
@@ -118,35 +120,23 @@ async def check_rpi_camera_status() -> dict:
 # ============================================================
 
 async def capture_rpi_image() -> bytes:
-    """
-    Capture an image using the Raspberry Pi camera
-    and return the JPEG bytes.
-    """
+    """Capture an image using the Raspberry Pi camera."""
 
-    if not RPI_BASE_URL:
-        raise RuntimeError(
-            "Raspberry Pi address is not configured."
-        )
+    _require_rpi_url()
 
     try:
-
-        async with httpx.AsyncClient(
-            timeout=None
-        ) as client:
-
+        async with httpx.AsyncClient(timeout=None) as client:
             response = await client.post(
-                f"{RPI_BASE_URL}/camera/capture"
+                f"{RPI_BASE_URL}/camera/capture",
+                headers=_headers(),
             )
-
             response.raise_for_status()
 
             content_type = response.headers.get(
-                "content-type",
-                ""
+                "content-type", ""
             )
 
             if not content_type.startswith("image/"):
-
                 raise RuntimeError(
                     "Raspberry Pi did not return an image."
                 )
@@ -154,165 +144,229 @@ async def capture_rpi_image() -> bytes:
             return response.content
 
     except httpx.HTTPError as exc:
-
         raise RuntimeError(
-            "Raspberry Pi image capture failed: "
-            f"{exc}"
+            f"Raspberry Pi image capture failed: {exc}"
         ) from exc
 
 
 # ============================================================
-# RASPBERRY PI TEMPLATE CREATION
+# TEMPLATE CAPTURE WORKFLOW
 # ============================================================
 
-async def create_rpi_template(
+async def start_rpi_template(
     template_name: str,
-    reference_images: list,
+    expected_images: int,
 ) -> dict:
+    """
+    Start a Pi-camera template capture session.
+    The user selects 4 or 5 reference images.
+    """
 
-    if not RPI_BASE_URL:
-        raise RuntimeError(
-            "Raspberry Pi address is not configured."
+    _require_rpi_url()
+
+    if not template_name or not template_name.strip():
+        raise ValueError("Template name cannot be empty.")
+
+    if expected_images not in (4, 5):
+        raise ValueError(
+            "Reference image count must be 4 or 5."
         )
 
-    files = []
-    opened_files = []
+    payload = {
+        "template_name": template_name.strip(),
+        "expected_images": expected_images,
+    }
 
     try:
-
-        for image in reference_images:
-
-            image.file.seek(0)
-
-            opened_files.append(
-                image.file
-            )
-
-            files.append(
-                (
-                    "reference_images",
-                    (
-                        image.filename or "reference.png",
-                        image.file,
-                        image.content_type or "image/png",
-                    ),
-                )
-            )
-
-        async with httpx.AsyncClient(
-            timeout=None
-        ) as client:
-
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                f"{RPI_BASE_URL}/templates/create",
-                data={
-                    "template_name": template_name
-                },
-                files=files,
+                f"{RPI_BASE_URL}/templates/start",
+                json=payload,
+                headers=_headers(),
             )
 
-            response.raise_for_status()
+            if not response.is_success:
+                _raise_rpi_error(response, "Starting template session")
 
             return response.json()
 
     except httpx.HTTPError as exc:
-
         raise RuntimeError(
-            "Raspberry Pi template creation failed: "
-            f"{exc}"
+            f"Unable to start Pi template session: {exc}"
         ) from exc
 
-    finally:
 
-        for image_file in opened_files:
+async def capture_next_rpi_template_image(
+    session_id: str,
+) -> dict:
+    """
+    Capture exactly one reference image for the given session.
+    Call this only when the user presses Next.
+    """
 
-            image_file.close()
+    _require_rpi_url()
 
-def make_rpi_image_url(image_path: str | None) -> str | None:
+    if not session_id:
+        raise ValueError("Template session ID is required.")
+
+    try:
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.post(
+                f"{RPI_BASE_URL}/templates/next",
+                json={"session_id": session_id},
+                headers=_headers(),
+            )
+
+            if not response.is_success:
+                _raise_rpi_error(response, "Capturing template image")
+
+            return response.json()
+
+    except httpx.HTTPError as exc:
+        raise RuntimeError(
+            f"Unable to capture next template image: {exc}"
+        ) from exc
+
+
+async def finish_rpi_template(
+    session_id: str,
+) -> dict:
+    """
+    Build and save the template after all requested images
+    have been captured successfully.
+    """
+
+    _require_rpi_url()
+
+    if not session_id:
+        raise ValueError("Template session ID is required.")
+
+    try:
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.post(
+                f"{RPI_BASE_URL}/templates/finish",
+                json={"session_id": session_id},
+                headers=_headers(),
+            )
+
+            if not response.is_success:
+                _raise_rpi_error(response, "Saving template")
+
+            return response.json()
+
+    except httpx.HTTPError as exc:
+        raise RuntimeError(
+            f"Unable to finish Pi template session: {exc}"
+        ) from exc
+
+
+async def cancel_rpi_template(
+    session_id: str,
+) -> dict:
+    """Cancel an unfinished template capture session."""
+
+    _require_rpi_url()
+
+    if not session_id:
+        raise ValueError("Template session ID is required.")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{RPI_BASE_URL}/templates/cancel",
+                json={"session_id": session_id},
+                headers=_headers(),
+            )
+
+            if not response.is_success:
+                _raise_rpi_error(response, "Cancelling template session")
+
+            return response.json()
+
+    except httpx.HTTPError as exc:
+        raise RuntimeError(
+            f"Unable to cancel Pi template session: {exc}"
+        ) from exc
+
+
+async def list_rpi_templates() -> dict:
+    """Retrieve saved template names from the Raspberry Pi."""
+
+    _require_rpi_url()
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{RPI_BASE_URL}/templates",
+                headers=_headers(),
+            )
+
+            if not response.is_success:
+                _raise_rpi_error(response, "Listing templates")
+
+            return response.json()
+
+    except httpx.HTTPError as exc:
+        raise RuntimeError(
+            f"Unable to retrieve Pi templates: {exc}"
+        ) from exc
+
+
+# ============================================================
+# RASPBERRY PI IMAGE URL
+# ============================================================
+
+def make_rpi_image_url(
+    image_path: str | None,
+) -> str | None:
     if not image_path:
         return None
 
     return (
-        f"{RPI_BASE_URL.rstrip('/')}/inspection/image?"
+        f"{RPI_BASE_URL}/inspection/image?"
         f"{urlencode({'path': image_path})}"
     )
 
+
 # ============================================================
-# RASPBERRY PI FULL INSPECTION
+# RASPBERRY PI FULL INSPECTION - CAMERA
 # ============================================================
 
 async def run_rpi_inspection() -> dict:
-    """
-    Run the complete PCBVISION inspection pipeline
-    on the Raspberry Pi.
+    """Run the existing complete camera inspection pipeline."""
 
-    The Raspberry Pi performs:
-
-        Camera
-        YOLO
-        OCR
-        X-MCCV
-        Decision Engine
-        XAI
-        Hardware PASS/FAIL
-
-    The complete structured result is returned.
-    """
-
-    if not RPI_BASE_URL:
-        raise RuntimeError(
-            "Raspberry Pi address is not configured."
-        )
+    _require_rpi_url()
 
     try:
-
-        async with httpx.AsyncClient(
-            timeout=None
-        ) as client:
-
+        async with httpx.AsyncClient(timeout=None) as client:
             response = await client.post(
-                f"{RPI_BASE_URL}/inspection/run"
+                f"{RPI_BASE_URL}/inspection/run",
+                headers=_headers(),
             )
 
-            response.raise_for_status()
+            if not response.is_success:
+                _raise_rpi_error(response, "Camera inspection")
 
             data = response.json()
 
         if not isinstance(data, dict):
-
             raise RuntimeError(
-                "Raspberry Pi returned an invalid "
-                "inspection response."
+                "Raspberry Pi returned an invalid inspection response."
             )
 
         return data
 
     except httpx.TimeoutException as exc:
-
         raise RuntimeError(
             "Raspberry Pi inspection timed out."
         ) from exc
 
-    except httpx.HTTPStatusError as exc:
-
-        try:
-            error_data = exc.response.json()
-        except Exception:
-            error_data = exc.response.text
-
-        raise RuntimeError(
-            "Raspberry Pi inspection request failed: "
-            f"{error_data}"
-        ) from exc
-
     except httpx.HTTPError as exc:
-
         raise RuntimeError(
-            "Unable to communicate with Raspberry Pi "
-            "inspection API: "
-            f"{exc}"
+            f"Unable to communicate with Pi inspection API: {exc}"
         ) from exc
-        
+
+
 # ============================================================
 # RASPBERRY PI UPLOADED IMAGE INSPECTION
 # ============================================================
@@ -321,14 +375,11 @@ async def run_rpi_uploaded_inspection(
     image_path: str,
 ) -> dict:
     """
-    Send a locally uploaded PCB image to the Raspberry Pi
-    and run the same PCBVISION inspection pipeline.
+    Send an uploaded PCB image to the Raspberry Pi.
+    Existing uploaded-image inspection workflow is preserved.
     """
 
-    if not RPI_BASE_URL:
-        raise RuntimeError(
-            "Raspberry Pi address is not configured."
-        )
+    _require_rpi_url()
 
     path = Path(image_path)
 
@@ -339,7 +390,6 @@ async def run_rpi_uploaded_inspection(
 
     try:
         with path.open("rb") as image_file:
-
             files = {
                 "image": (
                     path.name,
@@ -349,50 +399,34 @@ async def run_rpi_uploaded_inspection(
                 )
             }
 
-            async with httpx.AsyncClient(
-                timeout=None
-            ) as client:
-
+            async with httpx.AsyncClient(timeout=None) as client:
                 response = await client.post(
                     f"{RPI_BASE_URL}/inspection/upload",
                     files=files,
+                    headers=_headers(),
                 )
 
-                response.raise_for_status()
+                if not response.is_success:
+                    _raise_rpi_error(
+                        response,
+                        "Uploaded-image inspection",
+                    )
 
                 data = response.json()
 
         if not isinstance(data, dict):
             raise RuntimeError(
-                "Raspberry Pi returned an invalid "
-                "uploaded-image inspection response."
+                "Raspberry Pi returned an invalid uploaded-image response."
             )
 
         return data
 
     except httpx.TimeoutException as exc:
-
         raise RuntimeError(
             "Raspberry Pi uploaded-image inspection timed out."
         ) from exc
 
-    except httpx.HTTPStatusError as exc:
-
-        try:
-            error_data = exc.response.json()
-        except Exception:
-            error_data = exc.response.text
-
-        raise RuntimeError(
-            "Raspberry Pi uploaded-image inspection failed: "
-            f"{error_data}"
-        ) from exc
-
     except httpx.HTTPError as exc:
-
         raise RuntimeError(
-            "Unable to communicate with Raspberry Pi "
-            "uploaded-image inspection API: "
-            f"{exc}"
+            f"Unable to communicate with Pi upload API: {exc}"
         ) from exc
-        
