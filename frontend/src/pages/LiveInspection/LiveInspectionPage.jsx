@@ -324,7 +324,10 @@ export default function LiveInspectionPage() {
           uploadFile,
           inspectionMode === "template" ? selectedTemplate : null
         );
-      if (!result || result.status !== "success") {
+      if (
+        !result ||
+        (result.status !== "success" && !result.inspection)
+      ) {
         throw new Error(
           result?.message || result?.detail || "Upload inspection failed.",
         );
@@ -835,17 +838,24 @@ export default function LiveInspectionPage() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.9fr)] gap-5 items-stretch">
-          <InspectionImagePanel
-            inspection={inspection}
-            pcbImage={pcbImage}
-            uploadedImage={uploadedImage}
-            imageDims={null}
-            scanPhase={scanPhase}
-            scanning={scanning}
-            selectedDetection={selectedDetection}
-            onDetectionClick={handleDetectionClick}
-            showAnnotations={true}
-          />
+        <InspectionImagePanel
+          inspection={inspection}
+          pcbImage={inspectionMode === "upload" ? null : pcbImage}
+          uploadedImage={
+            inspectionMode === "upload" && uploadPreview
+              ? {
+                  url: uploadPreview,
+                  name: uploadFile?.name || "Uploaded PCB Image",
+                }
+              : uploadedImage
+          }
+          imageDims={null}
+          scanPhase={scanPhase}
+          scanning={scanning || isUploading}
+          selectedDetection={selectedDetection}
+          onDetectionClick={handleDetectionClick}
+          showAnnotations={true}
+        />
 
           <XAIExplanationPanel
             inspection={inspection}
