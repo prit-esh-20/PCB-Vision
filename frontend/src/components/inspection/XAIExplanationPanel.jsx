@@ -60,16 +60,30 @@ export default function XAIExplanationPanel({
     );
   }
 
-  const aiExplanation =
-    inspection?.results?.ai_explanation ||
-    inspection?.ai_explanation ||
-    {};
+  
+const aiExplanation =
+  inspection?.results?.ai_explanation ||
+  inspection?.inspection?.results?.ai_explanation ||
+  inspection?.ai_explanation ||
+  inspection?.inspection?.ai_explanation ||
+  {};
 
-  const xaiData = {
-    ...(inspection?.xai || {}),
-    ...aiExplanation,
-    ...(xai || {}),
-  };
+const xaiData = {
+  ...(inspection?.xai || {}),
+  ...aiExplanation,
+  ...(xai || {}),
+};
+
+const directExplanation =
+  typeof inspection?.xaiExplanation === "string"
+    ? inspection.xaiExplanation
+    : typeof inspection?.gradCamExplanation === "string"
+      ? inspection.gradCamExplanation
+      : "";
+
+if (!xaiData.explanation && directExplanation) {
+  xaiData.explanation = directExplanation;
+}
 
   const explanation =
     typeof xaiData.explanation === "string"

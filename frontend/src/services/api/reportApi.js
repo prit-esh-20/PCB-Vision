@@ -1,6 +1,7 @@
 import API_CONFIG from "../../config/api";
 import apiClient from "../apiClient";
 import { reportMock } from "../mock/reportMock";
+import { resolveApiUrl } from "./reportsApi";
 
 // Report generation service for the Dashboard action. In mock mode the PDF is
 // built in the browser through the dedicated report service; with the backend
@@ -16,6 +17,11 @@ export const reportApi = {
     };
 
     const { data } = await apiClient.post("/reports/generate", payload);
-    return data;
+
+    return {
+      ...data,
+      viewUrl: resolveApiUrl(data?.viewUrl),
+      downloadUrl: resolveApiUrl(data?.downloadUrl),
+    };
   },
 };

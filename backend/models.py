@@ -101,3 +101,16 @@ class Notification(Base):
         DateTime(timezone=True),
         server_default=func.now()
     )
+    
+
+class AnalyticsSnapshot(Base):
+    __tablename__ = "analytics_snapshots"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    dataset = Column(String(50), nullable=False, unique=True)
+    data = Column(Text, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )

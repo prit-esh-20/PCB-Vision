@@ -6,7 +6,7 @@ import { DEFAULT_PCB_TYPE_ID, fetchPcbTypes } from "../../config/pcbTypes";
 import { useReports } from "../../hooks/useReports";
 import { useNotifications } from "../../context/NotificationContext";
 import { reportsApi } from "../../services/api/reportsApi";
-import { FileText, Download, Eye, Calendar, ArrowRight } from "lucide-react";
+import { FileText, Download, Eye, Calendar, ArrowRight, Loader2 } from "lucide-react";
 
 const triggerDownload = (url, filename) => {
   const anchor = document.createElement("a");
@@ -16,6 +16,22 @@ const triggerDownload = (url, filename) => {
   anchor.click();
   anchor.remove();
 };
+
+const formatReportDate = (value) => {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const isCompiled = (status) =>
+  ["GENERATED", "COMPILED"].includes(String(status || "").toUpperCase());
 
 export default function ReportsPage() {
   const [pcbTypes, setPcbTypes] = useState([]);
@@ -30,6 +46,7 @@ export default function ReportsPage() {
   const { reports, loading, error, refresh } = useReports();
   const [displayReports, setDisplayReports] = useState([]);
   const [newReportId, setNewReportId] = useState(null);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     setDisplayReports(reports);
@@ -56,68 +73,85 @@ export default function ReportsPage() {
   };
 
   const handleCreateReport = async () => {
+    if (generating) return;
+
+    setGenerating(true);
     try {
       const report = await reportsApi.createReport({ ...form });
-      if (report?.viewUrl) {
-        window.open(report.viewUrl, "_blank");
+
+      if (!report?.id) {
+        throw new Error("The server did not return a report record.");
       }
-      setDisplayReports((currentReports) => [
-        report,
-        ...currentReports,
-      ]);
 
       setNewReportId(report.id);
+      await refresh();
 
       notify({
         type: "success",
         title: "Report Compiled",
-        message: "New PDF report compiled successfully.",
+        message: `${report.reportId || "Report"} compiled successfully.`,
       });
-    } catch {
+    } catch (err) {
       notify({
         type: "error",
         title: "Compilation Failed",
-        message: "Unable to compile the report. Please try again.",
+        message:
+          err?.response?.data?.detail ||
+          err?.message ||
+          "Unable to compile the report. Please try again.",
       });
+    } finally {
+      setGenerating(false);
     }
   };
 
   const handleViewReport = async (reportId) => {
+    // Open the tab synchronously so the popup blocker allows it, then point it
+    // at the backend PDF once the record has been verified.
+    const tab = window.open("", "_blank");
+
     try {
       const report = await reportsApi.getReport(reportId);
 
-      if (report?.viewUrl) {
-        window.open(report.viewUrl, "_blank", "noopener,noreferrer");
-      } else {
-        notify({
-          type: "error",
-          title: "View Failed",
-          message: "This report has no viewable PDF yet.",
-        });
+      if (!report?.viewUrl || report.fileAvailable === false) {
+        throw new Error("The report file is missing on the server.");
       }
-    } catch {
+
+      if (tab) {
+        tab.location.href = report.viewUrl;
+      } else {
+        window.open(report.viewUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (err) {
+      if (tab) tab.close();
       notify({
         type: "error",
         title: "View Failed",
-        message: "Unable to open the report. Please try again.",
+        message: err?.message || "Unable to open the report. Please try again.",
       });
     }
   };
 
   const handleDownloadReport = async (reportId) => {
     try {
-      const report = await reportsApi.downloadReport(reportId);
-      triggerDownload(report.downloadUrl, report.filename || `${reportId}.pdf`);
+      const { blob, filename } = await reportsApi.fetchReportPdf(reportId, {
+        download: true,
+      });
+      const objectUrl = URL.createObjectURL(blob);
+
+      triggerDownload(objectUrl, filename);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+
       notify({
         type: "success",
         title: "Report Downloaded",
-        message: `${report.filename || reportId}.pdf downloaded.`,
+        message: `${filename} downloaded.`,
       });
-    } catch {
+    } catch (err) {
       notify({
         type: "error",
         title: "Download Failed",
-        message: "Unable to download the report. Please try again.",
+        message: err?.message || "Unable to download the report. Please try again.",
       });
     }
   };
@@ -258,9 +292,19 @@ export default function ReportsPage() {
                   variant="primary"
                   className="!mt-5 !h-[50px] w-full flex items-center justify-center gap-2"
                   onClick={handleCreateReport}
+                  disabled={generating}
                 >
-                  Compile Audit Log File
-                  <ArrowRight className="w-4 h-4" />
+                  {generating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Compiling Report...
+                    </>
+                  ) : (
+                    <>
+                      Compile Audit Log File
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </Button>
               </div>
             </GlassCard>
@@ -296,7 +340,7 @@ export default function ReportsPage() {
                   {/* Report ID + Type */}
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-mono text-[9px] bg-accent/10 border border-accent/20 px-2 py-0.5 rounded text-accent font-semibold">
-                      {batch.id}
+                      {batch.reportId || batch.id}
                     </span>
                     <span className="font-mono text-[8px] text-slate-500 uppercase tracking-widest">
                       {batch.type}
@@ -312,7 +356,7 @@ export default function ReportsPage() {
                   <div className="mt-2.5 flex items-center justify-between gap-3 text-[9px] font-mono text-slate-500">
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3 text-slate-500" />{" "}
-                      {batch.date}
+                      {formatReportDate(batch.date)}
                     </span>
                     <span>
                       {batch.pcbId ? (
@@ -331,7 +375,7 @@ export default function ReportsPage() {
                   <div className="mt-3 flex items-center justify-between gap-3 border-t border-accent/5 pt-2.5">
                     <span
                       className={`flex items-center gap-1 font-mono text-[8px] tracking-wider px-2 py-1 border rounded uppercase font-bold ${
-                        batch.status === "COMPILED"
+                        isCompiled(batch.status)
                           ? "border-success/30 bg-success/5 text-success"
                           : "border-slate-800 bg-slate-900/60 text-slate-500"
                       }`}

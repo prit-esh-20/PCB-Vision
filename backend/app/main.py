@@ -31,7 +31,13 @@ from template_models import TemplateSession
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, File, Depends, FastAPI, Query
 from database import get_db
-from models import Inspection, Detection, Report, Notification
+from models import (
+    Inspection,
+    Detection,
+    Report,
+    Notification,
+    AnalyticsSnapshot,
+)
 from sqlalchemy import text
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
@@ -446,6 +452,7 @@ class InspectionRequest(BaseModel):
     uploadId: int | None = None
 
 @app.post("/api/inspection/upload")
+@app.post("/inspection/upload")
 async def upload_pcb(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
@@ -483,9 +490,15 @@ async def upload_pcb(
     db.refresh(inspection)
 
     try:
-        result = await run_rpi_uploaded_inspection(
-            str(file_path)
-        )
+        
+        result = await run_rpi_uploaded_inspection(str(file_path))
+        inspection_data = result.get("inspection", result)
+
+        print("RPI RESULT:", result)
+        print("INSPECTION DATA:", inspection_data)
+        print("DECISION:", inspection_data.get("decision"))
+        print("STATUS:", inspection_data.get("status"))
+
 
         # The RPi API returns:
         # {"status": "success", "inspection": {...}}
@@ -496,22 +509,90 @@ async def upload_pcb(
                 "Raspberry Pi returned an invalid inspection result."
             )
 
-        inspection.status = inspection_data.get(
-            "status", "UNVERIFIED"
+        decision = inspection_data.get("decision", {})
+        print("[DEBUG] PI DECISION:", repr(inspection_data.get("decision")))
+        print("[DEBUG] PI STATUS:", repr(inspection_data.get("status")))
+        print("[DEBUG] PI INSPECTION KEYS:", list(inspection_data.keys()))
+        
+        status = (
+            decision.get("overall_status")
+            or decision.get("status")
+            or inspection_data.get("status")
+            or "UNVERIFIED"
         )
-
+        inspection.status = status
         inspection.model_name = "YOLO"
-        inspection.confidence = max(
-            (
-                float(item["confidence"])
-                for item in inspection_data.get("detections", [])
-                if item.get("confidence") is not None
-            ),
-            default=None
+
+        # Extract inspection time from Pi response (multiple possible field names)
+        inspection_time_raw = (
+            inspection_data.get("inspection_time")
+            or inspection_data.get("inspectionTime")
+            or inspection_data.get("processing_time")
+            or inspection_data.get("processingTime")
+            or inspection_data.get("cycle_time")
+            or inspection_data.get("cycleTime")
         )
-        inspection.inspection_time = inspection_data.get(
-            "inspection_time"
-        )
+        # Normalize inspection time: Pi may return seconds as float or string,
+        # or confidence-scaled value. Use raw value as-is; the compute_daily_stats
+        # function filters out invalid values.
+        inspection.inspection_time = inspection_time_raw
+
+        detections = inspection_data.get("detections", [])
+        confidence_values = [
+            float(item["confidence"])
+            for item in detections
+            if item.get("confidence") is not None
+        ]
+        # Confidence from Pi is in 0-1 range; convert to percentage for storage
+        if confidence_values:
+            max_conf = max(confidence_values)
+            if max_conf <= 1.0:
+                inspection.confidence = round(max_conf * 100.0, 1)
+            else:
+                inspection.confidence = round(max_conf, 1)
+        else:
+            inspection.confidence = None
+
+        defect_classes = []
+        for det in detections:
+            cname = det.get("class_name")
+            if cname:
+                defect_classes.append(str(cname))
+        # Classify defect class: only known defect types; ordinary component
+        # detections are not defects unless explicitly classified.
+        KNOWN_DEFECT_CLASSES = {
+            "Solder Bridge",
+            "Missing Component",
+            "Polarity Mismatch",
+            "Misalignment",
+            "Wrong Part",
+        }
+        if defect_classes:
+            matched = [c for c in defect_classes if c in KNOWN_DEFECT_CLASSES]
+            if matched:
+                inspection.defect_class = ", ".join(dict.fromkeys(matched))
+            else:
+                # No known defect classes found; preserve "None" rather than
+                # listing component names as defects.
+                inspection.defect_class = "None"
+
+        # If there are no detections at all, also set defect_class to None
+        if not detections:
+            inspection.defect_class = None
+
+        for detection in detections:
+            bbox = detection.get("bbox") or {}
+            db_detection = Detection(
+                inspection_id=inspection.id,
+                class_name=str(detection.get("class_name", "unknown")),
+                confidence=detection.get("confidence"),
+                x_min=bbox.get("x1"),
+                y_min=bbox.get("y1"),
+                x_max=bbox.get("x2"),
+                y_max=bbox.get("y2"),
+                detection_type="YOLO",
+            )
+            db.add(db_detection)
 
         db.commit()
         db.refresh(inspection)
@@ -911,42 +992,56 @@ def count_record_defects(record: Inspection) -> int:
     matched = [p for p in parts if p in KNOWN_DEFECT_CLASSES]
     return len(matched) if matched else 1
 
+
 def compute_daily_stats(records: list[Inspection]) -> dict:
+    # All saved inspections count as activity.
+    inspected = len(records)
+
+    # PASS/FAIL results are used only for verified quality metrics.
     completed = [r for r in records if is_verified_completed(r)]
     passed = sum(1 for r in completed if is_verified_pass(r))
-    failed = len(completed) - passed
-    inspected = len(completed)
+    failed = sum(1 for r in completed if is_verified_fail(r))
 
-    if inspected > 0:
-        pass_rate = round((passed / inspected) * 100.0, 1)
+    if completed:
+        pass_rate = round((passed / len(completed)) * 100.0, 1)
     else:
         pass_rate = None
 
+    # Processing time and confidence use all records that have valid values.
     valid_times = [
         float(r.inspection_time)
-        for r in completed
-        if r.inspection_time is not None and float(r.inspection_time) > 0
+        for r in records
+        if r.inspection_time is not None
+        and float(r.inspection_time) > 0
     ]
-    if valid_times:
-        avg_cycle_time = round(sum(valid_times) / len(valid_times), 2)
-    else:
-        avg_cycle_time = None
+    avg_cycle_time = (
+        round(sum(valid_times) / len(valid_times), 2)
+        if valid_times else None
+    )
 
     valid_confidences = [
         float(r.confidence)
-        for r in completed
+        for r in records
         if r.confidence is not None
     ]
     if valid_confidences:
-        multiplier = 100.0 if max(valid_confidences) <= 1.0 else 1.0
-        avg_confidence = round((sum(valid_confidences) / len(valid_confidences)) * multiplier, 1)
+        multiplier = (
+            100.0 if max(valid_confidences) <= 1.0 else 1.0
+        )
+        avg_confidence = round(
+            (sum(valid_confidences) / len(valid_confidences))
+            * multiplier,
+            1,
+        )
     else:
         avg_confidence = None
 
-    defects = sum(count_record_defects(r) for r in completed)
+    # Count defects only from verified failures.
+    defects = sum(count_record_defects(r) for r in completed if is_verified_fail(r))
 
     return {
         "inspected": inspected,
+        "verified": len(completed),
         "pass": passed,
         "fail": failed,
         "passRate": pass_rate,
@@ -954,6 +1049,7 @@ def compute_daily_stats(records: list[Inspection]) -> dict:
         "avgConfidence": avg_confidence,
         "defects": defects,
     }
+
 
 def compute_comparison_trends(today: dict, yesterday: dict) -> dict:
     if yesterday["inspected"] > 0:
@@ -1026,202 +1122,26 @@ def compute_comparison_trends(today: dict, yesterday: dict) -> dict:
 @app.get("/api/analytics")
 @app.get("/analytics")
 def get_analytics(db: Session = Depends(get_db)):
-    sys_tz = get_system_timezone()
-    now_local = datetime.now(sys_tz)
-
-    start_of_today_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_of_today_local = start_of_today_local + timedelta(days=1)
-
-    start_of_yesterday_local = start_of_today_local - timedelta(days=1)
-    end_of_yesterday_local = start_of_today_local
-
-    start_of_7days_local = start_of_today_local - timedelta(days=6)
-    start_7days_utc = start_of_7days_local.astimezone(timezone.utc)
-
-    # Fetch 7 days of inspections in one query
-    recent_records = (
-        db.query(Inspection)
-        .filter(Inspection.created_at >= start_7days_utc)
-        .all()
+    snapshot = (
+        db.query(AnalyticsSnapshot)
+        .filter(AnalyticsSnapshot.dataset == "dashboard")
+        .first()
     )
 
-    # Segment today and yesterday using accurate local calendar days
-    today_records = [
-        r for r in recent_records
-        if start_of_today_local <= to_local_datetime(r.created_at, sys_tz) < end_of_today_local
-    ]
-    yesterday_records = [
-        r for r in recent_records
-        if start_of_yesterday_local <= to_local_datetime(r.created_at, sys_tz) < end_of_yesterday_local
-    ]
+    if snapshot is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Fixed dashboard analytics data not found in database."
+        )
 
-    today_stats = compute_daily_stats(today_records)
-    yesterday_stats = compute_daily_stats(yesterday_records)
-    trends = compute_comparison_trends(today_stats, yesterday_stats)
-
-    # Hourly throughput timeline for current day (all 24 hours in local time)
-    hourly_throughput = []
-    today_completed = [r for r in today_records if is_verified_completed(r)]
-    for hour in range(24):
-        hour_records = [
-            r for r in today_completed
-            if to_local_datetime(r.created_at, sys_tz).hour == hour
-        ]
-        h_passed = sum(1 for r in hour_records if is_verified_pass(r))
-        h_inspected = len(hour_records)
-        h_fail = h_inspected - h_passed
-        conf_list = [float(r.confidence) for r in hour_records if r.confidence is not None]
-        if conf_list:
-            mult = 100.0 if max(conf_list) <= 1.0 else 1.0
-            h_conf = round((sum(conf_list) / len(conf_list)) * mult, 1)
-        else:
-            h_conf = None
-
-        hourly_throughput.append({
-            "hour": f"{hour:02d}:00",
-            "inspected": h_inspected,
-            "pass": h_passed,
-            "fail": h_fail,
-            "confidence": h_conf,
-        })
-
-    # Defect breakdown from verified failures
-    defect_counts = {}
-    for r in today_completed:
-        if not is_verified_fail(r):
-            continue
-        raw = str(r.defect_class or "").strip()
-        if not raw or raw.lower() == "none":
-            defect_counts["Uncategorized Defect"] = defect_counts.get("Uncategorized Defect", 0) + 1
-            continue
-        parts = [p.strip() for p in raw.split(",") if p.strip()]
-        matched = [p for p in parts if p in KNOWN_DEFECT_CLASSES]
-        if matched:
-            for d in matched:
-                defect_counts[d] = defect_counts.get(d, 0) + 1
-        else:
-            defect_counts["Uncategorized Defect"] = defect_counts.get("Uncategorized Defect", 0) + 1
-
-    defect_chart = [
-        {"name": name, "count": count}
-        for name, count in sorted(defect_counts.items(), key=lambda item: item[1], reverse=True)
-    ]
-
-    # Latest seven calendar days in chronological order
-    trend_7_days = []
-    recent_completed = [r for r in recent_records if is_verified_completed(r)]
-    for offset in range(6, -1, -1):
-        day_start = start_of_today_local - timedelta(days=offset)
-        day_end = day_start + timedelta(days=1)
-
-        day_records = [
-            r for r in recent_completed
-            if day_start <= to_local_datetime(r.created_at, sys_tz) < day_end
-        ]
-
-        d_stats = compute_daily_stats(day_records)
-
-        trend_7_days.append({
-            "day": day_start.strftime("%b %d"),
-            "date": day_start.strftime("%b %d"),
-            "fullDate": day_start.strftime("%Y-%m-%d"),
-            "weekday": day_start.strftime("%a"),
-            "passRate": d_stats["passRate"],
-            "avgTime": d_stats["avgCycleTime"],
-            "inspected": d_stats["inspected"],
-            "pass": d_stats["pass"],
-            "fail": d_stats["fail"],
-            "hasData": d_stats["inspected"] > 0,
-        })
-
-    # Optional process-time limit (only if configured via environment)
-    process_limit_env = os.getenv("PROCESS_TIME_LIMIT_SECONDS")
     try:
-        process_limit = float(process_limit_env) if process_limit_env else None
-    except ValueError:
-        process_limit = None
+        return json.loads(snapshot.data)
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(
+            status_code=500,
+            detail="Stored dashboard analytics data is invalid."
+        )
 
-    if today_stats["inspected"] > 0:
-        quality_summary = [
-            {
-                "name": "PASS RATE",
-                "value": today_stats["passRate"],
-                "color": "#00FF9C",
-            },
-            {
-                "name": "DEFECT RATE",
-                "value": round(100.0 - today_stats["passRate"], 1),
-                "color": "#FF4D6D",
-            },
-        ]
-        yield_rate_val = today_stats["passRate"]
-    else:
-        quality_summary = []
-        yield_rate_val = None
-
-    donut_stats = [
-        {
-            "label": "Today's Target",
-            "value": 95.0,
-        },
-        {
-            "label": "Yesterday's Yield",
-            "value": yesterday_stats["passRate"],
-        },
-        {
-            "label": "Daily Improvement",
-            "value": round(today_stats["passRate"] - yesterday_stats["passRate"], 1)
-                     if (today_stats["passRate"] is not None and yesterday_stats["passRate"] is not None)
-                     else None,
-            "up": (today_stats["passRate"] >= yesterday_stats["passRate"])
-                  if (today_stats["passRate"] is not None and yesterday_stats["passRate"] is not None)
-                  else True,
-        },
-    ]
-
-    return {
-        "kpis": [
-            {
-                "label": "Yield Rate",
-                "value": today_stats["passRate"],
-                "suffix": "%" if today_stats["passRate"] is not None else "",
-                "decimals": 1,
-                "trend": trends["passRateTrend"],
-                "up": trends["passRateUp"],
-            },
-            {
-                "label": "Today's Defects",
-                "value": today_stats["defects"],
-                "suffix": "",
-                "decimals": 0,
-                "trend": trends["defectsTrend"],
-                "up": trends["defectsUp"],
-            },
-            {
-                "label": "Avg Confidence",
-                "value": today_stats["avgConfidence"],
-                "suffix": "%" if today_stats["avgConfidence"] is not None else "",
-                "decimals": 1,
-                "trend": trends["confidenceTrend"],
-                "up": trends["confidenceUp"],
-            },
-            {
-                "label": "Inspection Time",
-                "value": today_stats["avgCycleTime"],
-                "suffix": "s" if today_stats["avgCycleTime"] is not None else "",
-                "decimals": 2,
-                "trend": trends["cycleTimeTrend"],
-                "up": trends["cycleTimeUp"],
-            },
-        ],
-        "qualitySummary": quality_summary,
-        "donutStats": donut_stats,
-        "yieldRate": yield_rate_val,
-        "defectChart": defect_chart,
-        "hourlyThroughput": hourly_throughput,
-        "trend7Days": trend_7_days,
-        "processLimit": process_limit,
-    }
 
 @app.get("/api/reports")
 def get_reports(
@@ -1233,20 +1153,46 @@ def get_reports(
         .all()
     )
 
-    return [
-        {
-            "id": report.id,
-            "reportId": report.report_id,
-            "title": report.title,
-            "reportType": report.report_type,
-            "inspectionId": report.inspection_id,
-            "fileName": report.file_name,
-            "filePath": report.file_path,
-            "status": report.status,
-            "createdAt": report.created_at,
-        }
-        for report in reports
-    ]
+    results = []
+
+    for report in reports:
+        report_path = Path(report.file_path) if report.file_path else None
+        file_available = bool(report_path and report_path.exists())
+
+        inspection = None
+        if report.inspection_id is not None:
+            inspection = (
+                db.query(Inspection)
+                .filter(Inspection.id == report.inspection_id)
+                .first()
+            )
+
+        results.append(
+            {
+                "id": report.id,
+                "reportId": report.report_id,
+                "title": report.title,
+                "type": report.report_type,
+                "reportType": report.report_type,
+                "inspectionId": report.inspection_id,
+                "pcbId": inspection.board_id if inspection else None,
+                "fileName": report.file_name,
+                "filePath": report.file_path,
+                "size": (
+                    f"{report_path.stat().st_size / 1024:.1f} KB"
+                    if file_available
+                    else "N/A"
+                ),
+                "status": report.status,
+                "date": report.created_at,
+                "createdAt": report.created_at,
+                "fileAvailable": file_available,
+                "viewUrl": f"/api/reports/{report.id}/view",
+                "downloadUrl": f"/api/reports/{report.id}/download",
+            }
+        )
+
+    return results
 
 def _generate_inspection_report(
     inspection,
@@ -1254,959 +1200,22 @@ def _generate_inspection_report(
     db,
     reports_dir,
 ):
-    """Build a PDF report for a specific inspection and persist a Report row.
+    """Build the detailed inspection PDF and persist a Report row.
 
-    Reused by both the legacy POST /reports endpoint (latest inspection) and
-    the new POST /reports/generate endpoint (specific inspection id).
+    The layout lives in app.report_builder so the report structure is kept in
+    one place. Reused by both POST /reports (latest inspection) and
+    POST /reports/generate (specific inspection id).
     """
-    # ---------------------------------------------------------
-    # Report identity and file location
-    # ---------------------------------------------------------
+    from app.report_builder import build_inspection_report
 
-    report_id = f"RPT-{uuid.uuid4().hex[:8].upper()}"
-    filename = f"{report_id}.pdf"
-
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    file_path = reports_dir / filename
-
-    # ---------------------------------------------------------
-    # ReportLab imports
-    # ---------------------------------------------------------
-
-    from reportlab.lib import colors
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import mm
-    from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
-    KeepTogether,
-    HRFlowable,
-    Image as RLImage,
-)
-    from PIL import Image as PILImage
-
-    # ---------------------------------------------------------
-    # Document setup
-    # ---------------------------------------------------------
-
-    PAGE_WIDTH, PAGE_HEIGHT = A4
-
-    doc = SimpleDocTemplate(
-        str(file_path),
-        pagesize=A4,
-        rightMargin=18 * mm,
-        leftMargin=18 * mm,
-        topMargin=28 * mm,
-        bottomMargin=20 * mm,
-        title="PCBVision Inspection Report",
-        author="PCBVision",
-        subject="Automated PCB Inspection Report",
+    return build_inspection_report(
+        inspection,
+        report_data,
+        db,
+        reports_dir,
+        Report,
+        Notification,
     )
-
-    # ---------------------------------------------------------
-    # Color palette
-    # ---------------------------------------------------------
-
-    PCB_GREEN = colors.HexColor("#20D486")
-    DARK_GREEN = colors.HexColor("#073D2A")
-    DEEP_GREEN = colors.HexColor("#03251B")
-    DARK_BG = colors.HexColor("#081713")
-    LIGHT_BG = colors.HexColor("#F4F8F6")
-    BORDER = colors.HexColor("#C9D8D1")
-    TEXT = colors.HexColor("#17231F")
-    MUTED = colors.HexColor("#64756E")
-    WHITE = colors.white
-    PASS_GREEN = colors.HexColor("#168A58")
-    FAIL_RED = colors.HexColor("#C93636")
-    HEADER_BG = colors.HexColor("#0B1F18")
-    TEXT_MUTED = colors.HexColor("#8FA3A0")
-
-    # ---------------------------------------------------------
-    # Styles
-    # ---------------------------------------------------------
-
-    styles = getSampleStyleSheet()
-
-    report_title = ParagraphStyle(
-        "ReportTitle",
-        parent=styles["Heading1"],
-        fontName="Helvetica-Bold",
-        fontSize=21,
-        leading=25,
-        textColor=TEXT,
-        spaceAfter=4,
-    )
-
-    report_subtitle = ParagraphStyle(
-        "ReportSubtitle",
-        parent=styles["Normal"],
-        fontName="Helvetica",
-        fontSize=9,
-        leading=12,
-        textColor=MUTED,
-        spaceAfter=12,
-    )
-
-    section_title = ParagraphStyle(
-        "SectionTitle",
-        parent=styles["Heading2"],
-        fontName="Helvetica-Bold",
-        fontSize=11,
-        leading=14,
-        textColor=DARK_GREEN,
-        spaceBefore=5,
-        spaceAfter=7,
-    )
-
-    body = ParagraphStyle(
-        "Body",
-        parent=styles["BodyText"],
-        fontName="Helvetica",
-        fontSize=9,
-        leading=14,
-        textColor=TEXT,
-    )
-
-    small = ParagraphStyle(
-        "Small",
-        parent=styles["BodyText"],
-        fontName="Helvetica",
-        fontSize=8,
-        leading=11,
-        textColor=MUTED,
-    )
-
-    table_label = ParagraphStyle(
-        "TableLabel",
-        parent=styles["BodyText"],
-        fontName="Helvetica-Bold",
-        fontSize=8,
-        leading=11,
-        textColor=MUTED,
-    )
-
-    table_value = ParagraphStyle(
-        "TableValue",
-        parent=styles["BodyText"],
-        fontName="Helvetica",
-        fontSize=8.5,
-        leading=12,
-        textColor=TEXT,
-    )
-
-    xai_text = ParagraphStyle(
-        "XAIText",
-        parent=styles["BodyText"],
-        fontName="Helvetica",
-        fontSize=9,
-        leading=14,
-        textColor=TEXT,
-    )
-
-    # ---------------------------------------------------------
-    # Header / footer
-    # ---------------------------------------------------------
-
-    def draw_header_footer(canvas, document):
-        canvas.saveState()
-
-        # Header line
-        canvas.setStrokeColor(PCB_GREEN)
-        canvas.setLineWidth(1.2)
-        canvas.line(
-            18 * mm,
-            PAGE_HEIGHT - 17 * mm,
-            PAGE_WIDTH - 18 * mm,
-            PAGE_HEIGHT - 17 * mm,
-        )
-
-        # Brand
-        canvas.setFont("Helvetica-Bold", 13)
-        canvas.setFillColor(PCB_GREEN)
-        canvas.drawString(
-            18 * mm,
-            PAGE_HEIGHT - 13 * mm,
-            "PCB",
-        )
-
-        canvas.setFillColor(TEXT)
-        canvas.drawString(
-            30 * mm,
-            PAGE_HEIGHT - 13 * mm,
-            "Vision",
-        )
-
-        canvas.setFont("Helvetica", 7.5)
-        canvas.setFillColor(MUTED)
-        canvas.drawRightString(
-            PAGE_WIDTH - 18 * mm,
-            PAGE_HEIGHT - 13 * mm,
-            "INTELLIGENT PCB INSPECTION SYSTEM",
-        )
-
-        # Footer
-        canvas.setStrokeColor(BORDER)
-        canvas.setLineWidth(0.5)
-        canvas.line(
-            18 * mm,
-            13 * mm,
-            PAGE_WIDTH - 18 * mm,
-            13 * mm,
-        )
-
-        canvas.setFont("Helvetica", 7)
-        canvas.setFillColor(MUTED)
-
-        canvas.drawString(
-            18 * mm,
-            8 * mm,
-            "PCBVision • Quality Audit Report",
-        )
-
-        canvas.drawRightString(
-            PAGE_WIDTH - 18 * mm,
-            8 * mm,
-            f"Page {document.page}",
-        )
-
-        canvas.restoreState()
-
-    # ---------------------------------------------------------
-    # Helper for table cells
-    # ---------------------------------------------------------
-
-    def cell_label(value):
-        return Paragraph(str(value), table_label)
-
-    def cell_value(value):
-        return Paragraph(str(value), table_value)
-
-    # ---------------------------------------------------------
-    # Data preparation
-    # ---------------------------------------------------------
-
-    status = (inspection.status or "N/A").upper()
-    defect = inspection.defect_class or "None detected"
-    model_name = inspection.model_name or "Pending"
-    image_name = inspection.image_name or "N/A"
-
-    inspection_time = inspection.inspection_time or 0
-
-    explanation = (
-        inspection.xai_explanation
-        or "No explanation is currently available."
-    )
-
-    report_scope = report_data.get("reportScope", "SUMMARY").upper()
-
-    start_date = report_data.get("startDate", "N/A")
-    end_date = report_data.get("endDate", "N/A")
-
-    pcb_type_id = report_data.get("pcbTypeId")
-
-    embed_gradcam = bool(
-        report_data.get("embedGradCam", False)
-    )
-
-    include_opencv_coordinates = bool(
-        report_data.get("includeOpenCvCoordinates", False)
-    )
-
-    # ---------------------------------------------------------
-    # Build document
-    # ---------------------------------------------------------
-
-    story = []
-    
-    # ---------------------------------------------------------
-    # Report type configuration
-    # ---------------------------------------------------------
-
-    if report_scope == "SUMMARY":
-        report_profile_title = "Executive Inspection Summary"
-        report_profile_description = (
-            "A concise overview of the PCB inspection result, "
-            "inspection status, and key findings."
-        )
-
-    elif report_scope == "FULL":
-        report_profile_title = "Complete Inspection Report"
-        report_profile_description = (
-            "A comprehensive inspection record containing "
-            "inspection details, detection information, XAI findings, "
-            "and audit configuration."
-        )
-
-    elif report_scope == "X-MCCV":
-        report_profile_title = "X-MCCV Explainability Report"
-        report_profile_description = (
-            "An explainability-focused report containing AI findings, "
-            "diagnostic information, and available model interpretation data."
-        )
-
-    else:
-        report_scope = "SUMMARY"
-        report_profile_title = "Executive Inspection Summary"
-        report_profile_description = (
-            "A concise overview of the PCB inspection result, "
-            "inspection status, and key findings."
-        )
-        
-    is_summary = report_scope == "SUMMARY"
-    is_full = report_scope == "FULL"
-    is_xmccv = report_scope == "X-MCCV"
-
-    # Title
-    story.append(Spacer(1, 5 * mm))
-
-    if is_summary:
-        report_title_text = "PCB Inspection Report — Overview"
-    elif is_full:
-        report_title_text = "PCB Inspection Report — Full Details"
-    else:
-        report_title_text = "PCB Inspection Report — X-MCCV"
-
-    story.append(
-        Paragraph(
-            report_title_text,
-            report_title,
-        )
-    )
-    
-    story.append(
-        Paragraph(
-            report_profile_title,
-            ParagraphStyle(
-                "ProfileTitle",
-                parent=body,
-                fontName="Helvetica-Bold",
-                fontSize=10,
-                leading=13,
-                textColor=PCB_GREEN,
-                spaceAfter=3,
-            ),
-        )
-    )
-
-    story.append(
-        Paragraph(
-            report_profile_description,
-            small,
-        )
-    )
-
-    story.append(Spacer(1, 4 * mm))
-
-    story.append(
-        Paragraph(
-            "Automated Quality Inspection & Compliance Summary",
-            report_subtitle,
-        )
-    )
-
-    # ---------------------------------------------------------
-    # Report identification block
-    # ---------------------------------------------------------
-
-    generated_date = (
-        inspection.created_at.strftime("%d %b %Y, %H:%M UTC")
-        if inspection.created_at
-        else "N/A"
-    )
-
-    identification_data = [
-        [
-            cell_label("REPORT ID"),
-            cell_value(report_id),
-            cell_label("PCB ID"),
-            cell_value(inspection.board_id),
-        ],
-        [
-            cell_label("GENERATED"),
-            cell_value(generated_date),
-            cell_label("REPORT TYPE"),
-            cell_value(report_scope),
-        ],
-    ]
-
-    identification_table = Table(
-        identification_data,
-        colWidths=[
-            25 * mm,
-            58 * mm,
-            25 * mm,
-            58 * mm,
-        ],
-    )
-
-    identification_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), LIGHT_BG),
-                ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
-                ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-            ]
-        )
-    )
-
-    story.append(identification_table)
-    story.append(Spacer(1, 7 * mm))
-
-    # ---------------------------------------------------------
-    # Inspection result
-    # ---------------------------------------------------------
-
-    story.append(
-        Paragraph(
-            "Inspection Result",
-            section_title,
-        )
-    )
-
-    status_color = PASS_GREEN if status == "PASS" else FAIL_RED
-
-    result_data = [
-        [
-            Paragraph(
-                f"<b>{status}</b>",
-                ParagraphStyle(
-                    "Status",
-                    parent=body,
-                    fontName="Helvetica-Bold",
-                    fontSize=15,
-                    textColor=WHITE,
-                    alignment=TA_CENTER,
-                ),
-            ),
-            cell_value(
-                f"<b>Defect:</b> {defect}<br/>"
-                f"<b>Inspection Time:</b> {inspection_time:.2f} seconds<br/>"
-                f"<b>Model:</b> {model_name}"
-            ),
-        ]
-    ]
-
-    result_table = Table(
-        result_data,
-        colWidths=[32 * mm, 134 * mm],
-    )
-
-    result_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (0, 0), status_color),
-                ("BACKGROUND", (1, 0), (1, 0), LIGHT_BG),
-                ("BOX", (0, 0), (-1, -1), 0.8, BORDER),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 9),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 9),
-                ("TOPPADDING", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-            ]
-        )
-    )
-
-    story.append(result_table)
-    story.append(Spacer(1, 7 * mm))
-
-    # ---------------------------------------------------------
-    # Inspection details
-    # ---------------------------------------------------------
-
-    if is_full:
-
-        story.append(
-            Paragraph(
-                "Inspection Details",
-                section_title,
-            )
-        )
-
-        details_data = [
-            [
-                cell_label("PCB IMAGE"),
-                cell_value(image_name),
-            ],
-            [
-                cell_label("DEFECT CLASS"),
-                cell_value(defect),
-            ],
-            [
-                cell_label("MODEL"),
-                cell_value(model_name),
-            ],
-            [
-                cell_label("INSPECTION TIME"),
-                cell_value(f"{inspection_time:.2f} seconds"),
-            ],
-        ]
-
-        details_table = Table(
-            details_data,
-            colWidths=[48 * mm, 118 * mm],
-        )
-
-        details_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (0, -1), LIGHT_BG),
-                    ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
-                    ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                    ("TOPPADDING", (0, 0), (-1, -1), 7),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-                ]
-            )
-        )
-
-        story.append(details_table)
-        story.append(Spacer(1, 7 * mm))
-
-    # ---------------------------------------------------------
-    # PCB Image
-    # ---------------------------------------------------------
-
-    if inspection.image_path:
-        pcb_path = Path(inspection.image_path)
-
-        if pcb_path.exists():
-            try:
-                # Convert image to PNG so ReportLab can reliably embed it
-                temp_image_path = reports_dir / f"{report_id}_pcb.png"
-
-                with PILImage.open(pcb_path) as img:
-                    img = img.convert("RGB")
-                    img.save(temp_image_path, "PNG")
-
-                    img_width, img_height = img.size
-
-                max_width = 150 * mm
-                max_height = 85 * mm
-
-                scale = min(
-                    max_width / img_width,
-                    max_height / img_height,
-                )
-
-                display_width = img_width * scale
-                display_height = img_height * scale
-
-                story.append(
-                    Paragraph(
-                        "Inspected PCB Image",
-                        section_title,
-                    )
-                )
-
-                pcb_image = RLImage(
-                    str(temp_image_path),
-                    width=display_width,
-                    height=display_height,
-                )
-
-                story.append(
-                    Table(
-                        [[pcb_image]],
-                        colWidths=[166 * mm],
-                        style=TableStyle(
-                            [
-                                (
-                                    "BACKGROUND",
-                                    (0, 0),
-                                    (-1, -1),
-                                    LIGHT_BG,
-                                ),
-                                (
-                                    "BOX",
-                                    (0, 0),
-                                    (-1, -1),
-                                    0.7,
-                                    BORDER,
-                                ),
-                                (
-                                    "ALIGN",
-                                    (0, 0),
-                                    (-1, -1),
-                                    "CENTER",
-                                ),
-                                (
-                                    "VALIGN",
-                                    (0, 0),
-                                    (-1, -1),
-                                    "MIDDLE",
-                                ),
-                                (
-                                    "LEFTPADDING",
-                                    (0, 0),
-                                    (-1, -1),
-                                    8,
-                                ),
-                                (
-                                    "RIGHTPADDING",
-                                    (0, 0),
-                                    (-1, -1),
-                                    8,
-                                ),
-                                (
-                                    "TOPPADDING",
-                                    (0, 0),
-                                    (-1, -1),
-                                    8,
-                                ),
-                                (
-                                    "BOTTOMPADDING",
-                                    (0, 0),
-                                    (-1, -1),
-                                    8,
-                                ),
-                            ]
-                        ),
-                    )
-                )
-
-                story.append(Spacer(1, 7 * mm))
-
-            except Exception:
-                pass
-    
-    # ---------------------------------------------------------
-    # XAI explanation
-    # ---------------------------------------------------------
-
-    if is_xmccv:
-        xai_title = "X-MCCV Explainability Analysis"
-        xai_content = (
-            f"<b>Primary Finding:</b> {explanation}<br/><br/>"
-            "<b>Explainability Status:</b> X-MCCV explainability analysis "
-            "is configured for this report. Grad-CAM visualization and "
-            "raw OpenCV coordinate extraction will be populated when the "
-            "ML inspection pipeline is integrated."
-        )
-
-    elif is_full:
-        xai_title = "AI Inspection Explanation"
-        xai_content = (
-            f"<b>Inspection Explanation:</b> {explanation}<br/><br/>"
-            "<b>Explainability Status:</b> The explanation shown here is "
-            "based on the inspection data currently available to the "
-            "PCBVision system."
-        )
-
-    else:
-        xai_title = "Inspection Explanation"
-        xai_content = (
-            f"<b>Finding:</b> {explanation}"
-        )
-
-    story.append(
-        Paragraph(
-            xai_title,
-            section_title,
-        )
-    )
-
-    xai_table = Table(
-        [
-            [
-                Paragraph(
-                    xai_content,
-                    xai_text,
-                )
-            ]
-        ],
-        colWidths=[166 * mm],
-    )
-
-    xai_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F0F8F4")),
-                ("BOX", (0, 0), (-1, -1), 1, PCB_GREEN),
-                ("LINEBEFORE", (0, 0), (0, -1), 4, PCB_GREEN),
-                ("LEFTPADDING", (0, 0), (-1, -1), 12),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-                ("TOPPADDING", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-            ]
-        )
-    )
-
-    story.append(xai_table)
-    story.append(Spacer(1, 7 * mm))
-
-    # ---------------------------------------------------------
-    # Report scope
-    # ---------------------------------------------------------
-
-    story.append(
-        Paragraph(
-            "Report Scope",
-            section_title,
-        )
-    )
-
-    scope_data = [
-        [
-            cell_label("SCOPE"),
-            cell_value(report_scope),
-            cell_label("PCB TYPE"),
-            cell_value(report_data.get("pcbType", "All PCB Types")),
-        ],
-        [
-            cell_label("START DATE"),
-            cell_value(start_date),
-            cell_label("END DATE"),
-            cell_value(end_date),
-        ],
-    ]
-
-    scope_table = Table(
-        scope_data,
-        colWidths=[
-            25 * mm,
-            58 * mm,
-            25 * mm,
-            58 * mm,
-        ],
-    )
-
-    scope_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), LIGHT_BG),
-                ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
-                ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-            ]
-        )
-    )
-    story.append(scope_table)
-    story.append(Spacer(1, 8 * mm))
-
-    # ---------------------------------------------------------
-    # Detection Summary
-    # ---------------------------------------------------------
-
-    if is_summary:
-        story.append(Paragraph("Detection Summary", section_title))
-
-        detection_data = [
-            [cell_label("DEFECT CLASS"), cell_value(defect)],
-            [cell_label("RESULT"), cell_value(status)],
-        ]
-
-    elif is_full:
-        story.append(Paragraph("Detection Summary", section_title))
-
-        detection_data = [
-            [cell_label("DEFECT CLASS"), cell_value(defect)],
-            [cell_label("RESULT"), cell_value(status)],
-            [cell_label("MODEL"), cell_value(model_name)],
-            [cell_label("INSPECTION TIME"), cell_value(f"{inspection_time:.2f} seconds")],
-        ]
-
-    else:  # X-MCCV
-        story.append(Paragraph("Detection Summary", section_title))
-
-        detection_data = [
-            [cell_label("DEFECT CLASS"), cell_value(defect)],
-            [cell_label("RESULT"), cell_value(status)],
-            [cell_label("EXPLAINABILITY"), cell_value("X-MCCV Analysis")],
-        ]
-
-    detection_table = Table(
-        detection_data,
-        colWidths=[65 * mm, 101 * mm]
-    )
-
-    detection_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), HEADER_BG),
-        ("TEXTCOLOR", (0, 0), (0, -1), TEXT_MUTED),
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
-
-    story.append(detection_table)
-    story.append(Spacer(1, 8 * mm))
-
-    # ---------------------------------------------------------
-    # Audit configuration
-    # ---------------------------------------------------------
-
-    if is_full or is_xmccv:
-
-        story.append(
-            Paragraph(
-                "Audit Configuration",
-                section_title,
-            )
-        )
-
-        heatmaps = "Enabled" if embed_gradcam else "Disabled"
-
-        coordinates = (
-            "Included"
-            if include_opencv_coordinates
-            else "Excluded"
-        )
-
-        audit_data = [
-            [
-                cell_label("GRAD-CAM HEATMAPS"),
-                cell_value(heatmaps),
-            ],
-            [
-                cell_label("RAW OPENCV COORDINATES"),
-                cell_value(coordinates),
-            ],
-        ]
-
-        audit_table = Table(
-            audit_data,
-            colWidths=[65 * mm, 101 * mm],
-        )
-
-        audit_table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (0, -1), LIGHT_BG),
-                    ("BOX", (0, 0), (-1, -1), 0.7, BORDER),
-                    ("INNERGRID", (0, 0), (-1, -1), 0.4, BORDER),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                    ("TOPPADDING", (0, 0), (-1, -1), 7),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-                ]
-            )
-        )
-
-        story.append(audit_table)
-        story.append(Spacer(1, 9 * mm))
-
-    # ---------------------------------------------------------
-    # Final note
-    # ---------------------------------------------------------
-
-    story.append(
-        HRFlowable(
-            width="100%",
-            thickness=0.7,
-            color=BORDER,
-            spaceBefore=2,
-            spaceAfter=8,
-        )
-    )
-
-    story.append(
-        Paragraph(
-            "<b>Report Integrity Notice</b>",
-            ParagraphStyle(
-                "IntegrityTitle",
-                parent=body,
-                fontName="Helvetica-Bold",
-                fontSize=8.5,
-                textColor=DARK_GREEN,
-                spaceAfter=3,
-            ),
-        )
-    )
-
-    story.append(
-        Paragraph(
-            "This document was generated automatically by the PCBVision "
-            "inspection system. Inspection results and explanations are "
-            "based on the data available at the time the report was generated.",
-            small,
-        )
-    )
-
-    # ---------------------------------------------------------
-    # Generate PDF
-    # ---------------------------------------------------------
-
-    doc.build(
-        story,
-        onFirstPage=draw_header_footer,
-        onLaterPages=draw_header_footer,
-    )
-
-    # ---------------------------------------------------------
-    # Save database record
-    # ---------------------------------------------------------
-
-    file_size = file_path.stat().st_size
-
-    if is_summary:
-        report_title_db = "PCB Inspection Report — Overview"
-    elif is_full:
-        report_title_db = "PCB Inspection Report — Full Details"
-    else:
-        report_title_db = "PCB Inspection Report — X-MCCV"
-
-    report = Report(
-        report_id=report_id,
-        title=report_title_db,
-        report_type=report_scope,
-        inspection_id=inspection.id,
-        file_name=filename,
-        file_path=str(file_path),
-        status="GENERATED",
-    )
-
-    db.add(report)
-    db.commit()
-    db.refresh(report)
-
-    notification = Notification(
-        type="success",
-        title="Report Generated",
-        message=f"{report.title} was generated successfully.",
-        inspection_id=inspection.id
-    )
-
-    db.add(notification)
-    db.commit()
-
-    return {
-        "id": report.id,
-        "reportId": report.report_id,
-        "title": report.title,
-        "type": report.report_type,
-        "reportType": report.report_type,
-        "inspectionId": report.inspection_id,
-        "pcbId": inspection.board_id,
-        "filename": filename,
-        "fileName": filename,
-        "filePath": str(file_path),
-        "size": f"{file_size / 1024:.1f} KB",
-        "status": report.status,
-        "date": report.created_at,
-        "createdAt": report.created_at,
-        "downloadUrl": f"/api/reports/{report.id}/download",
-    }
 
 
 @app.post("/api/reports")
@@ -2221,13 +1230,21 @@ def create_report(
     )
 
     if not inspection:
-        return {
-            "status": "ERROR",
-            "message": "No inspection data available to generate report."
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="No inspection data available to generate report.",
+        )
 
     reports_dir = UPLOAD_DIR / "reports"
-    return _generate_inspection_report(inspection, report_data, db, reports_dir)
+
+    try:
+        return _generate_inspection_report(inspection, report_data, db, reports_dir)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unable to generate report: {exc}",
+        ) from exc
 
 
 @app.post("/api/reports/generate")
@@ -2262,13 +1279,21 @@ def generate_report(
         )
 
     if not inspection:
-        return {
-            "status": "ERROR",
-            "message": "No inspection data available to generate report."
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="No inspection data available to generate report.",
+        )
 
     reports_dir = UPLOAD_DIR / "reports"
-    return _generate_inspection_report(inspection, payload, db, reports_dir)
+
+    try:
+        return _generate_inspection_report(inspection, payload, db, reports_dir)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unable to generate report: {exc}",
+        ) from exc
 
 
 @app.get("/api/reports/{report_id}")
@@ -2283,22 +1308,40 @@ def get_report(
     )
 
     if not report:
-        return {
-            "status": "ERROR",
-            "message": "Report not found"
-        }
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    report_path = Path(report.file_path) if report.file_path else None
+    file_available = bool(report_path and report_path.exists())
+
+    inspection = None
+    if report.inspection_id is not None:
+        inspection = (
+            db.query(Inspection)
+            .filter(Inspection.id == report.inspection_id)
+            .first()
+        )
 
     return {
         "id": report.id,
         "reportId": report.report_id,
         "title": report.title,
+        "type": report.report_type,
         "reportType": report.report_type,
         "inspectionId": report.inspection_id,
+        "pcbId": inspection.board_id if inspection else None,
         "fileName": report.file_name,
         "filePath": report.file_path,
+        "size": (
+            f"{report_path.stat().st_size / 1024:.1f} KB"
+            if file_available
+            else "N/A"
+        ),
         "status": report.status,
+        "date": report.created_at,
         "createdAt": report.created_at,
-        "downloadUrl": f"/api/reports/{report.id}/download"
+        "fileAvailable": file_available,
+        "viewUrl": f"/api/reports/{report.id}/view",
+        "downloadUrl": f"/api/reports/{report.id}/download",
     }
 
 @app.get("/api/reports/{report_id}/download")
@@ -2313,31 +1356,24 @@ def download_report(
     )
 
     if not report:
-        return {
-            "status": "ERROR",
-            "message": "Report not found"
-        }
+        raise HTTPException(status_code=404, detail="Report not found")
 
     if not report.file_path:
-        return {
-            "status": "ERROR",
-            "message": "Report file not available"
-        }
+        raise HTTPException(status_code=404, detail="Report file not available")
 
     file_path = Path(report.file_path)
 
     if not file_path.exists():
-        return {
-            "status": "ERROR",
-            "message": "Report file not found"
-        }
+        raise HTTPException(status_code=404, detail="Report file not found")
 
     return FileResponse(
-        path=file_path,
+        path=str(file_path),
         media_type="application/pdf",
-        filename=report.file_name
+        filename=report.file_name or file_path.name,
+        headers={"Cache-Control": "no-store"},
     )
-    
+
+
 @app.get("/api/reports/{report_id}/view")
 def view_report(
     report_id: int,
@@ -2350,31 +1386,25 @@ def view_report(
     )
 
     if not report:
-        return {
-            "status": "ERROR",
-            "message": "Report not found"
-        }
+        raise HTTPException(status_code=404, detail="Report not found")
 
     if not report.file_path:
-        return {
-            "status": "ERROR",
-            "message": "Report file not available"
-        }
+        raise HTTPException(status_code=404, detail="Report file not available")
 
     file_path = Path(report.file_path)
 
     if not file_path.exists():
-        return {
-            "status": "ERROR",
-            "message": "Report file not found"
-        }
+        raise HTTPException(status_code=404, detail="Report file not found")
+
+    filename = report.file_name or file_path.name
 
     return FileResponse(
-        path=file_path,
+        path=str(file_path),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": "inline"
-        }
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
     )
 
 @app.get("/api/inspection-history/{inspection_id}")
@@ -2431,36 +1461,29 @@ def get_latest_inspection(
 def get_dashboard_stats(
     db: Session = Depends(get_db)
 ):
-    sys_tz = get_system_timezone()
-    now_local = datetime.now(sys_tz)
+    # Use UTC boundaries since Inspection.created_at is stored in UTC.
+    # This ensures consistent "today" across all timezones.
+    now_utc = datetime.now(timezone.utc)
+    start_of_today_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_today_utc = start_of_today_utc + timedelta(days=1)
+    start_of_yesterday_utc = start_of_today_utc - timedelta(days=1)
+    end_of_yesterday_utc = start_of_today_utc
 
-    start_of_today_local = now_local.replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0
-    )
-    end_of_today_local = start_of_today_local + timedelta(days=1)
-
-    start_of_yesterday_local = start_of_today_local - timedelta(days=1)
-    end_of_yesterday_local = start_of_today_local
-
-    start_yesterday_utc = start_of_yesterday_local.astimezone(timezone.utc)
-
-    # Fetch inspections since start of yesterday
+    # Fetch inspections since start of yesterday (UTC)
     inspections = (
         db.query(Inspection)
-        .filter(Inspection.created_at >= start_yesterday_utc)
+        .filter(Inspection.created_at >= start_of_yesterday_utc)
+        .filter(Inspection.created_at < end_of_today_utc)
         .all()
     )
 
     today_records = [
         r for r in inspections
-        if start_of_today_local <= to_local_datetime(r.created_at, sys_tz) < end_of_today_local
+        if r.created_at and r.created_at >= start_of_today_utc
     ]
     yesterday_records = [
         r for r in inspections
-        if start_of_yesterday_local <= to_local_datetime(r.created_at, sys_tz) < end_of_yesterday_local
+        if r.created_at and r.created_at >= start_of_yesterday_utc and r.created_at < end_of_yesterday_utc
     ]
 
     today_stats = compute_daily_stats(today_records)
@@ -2547,6 +1570,7 @@ async def get_ai_explanation(
             )
             response.raise_for_status()
             result = response.json()
+            print("[AI Explanation] Response:", result)
 
         if (
             isinstance(result, dict)
@@ -2566,6 +1590,7 @@ async def get_ai_explanation(
         return None
 
 @app.post("/api/inspection/run")
+@app.post("/inspection/run")
 async def run_inspection(
     request: InspectionRequest | None = None,
     db: Session = Depends(get_db)
@@ -2614,6 +1639,8 @@ async def run_inspection(
         # ---------------------------------------------------------
         pi_inspection_id = inspection_data.get("inspection_id")
         decision = inspection_data.get("decision", {})
+        print("[DEBUG] PI DECISION:", repr(inspection_data.get("decision")))
+        print("[DEBUG] PI STATUS:", repr(inspection_data.get("status")))
 
         # Determine status: prefer decision.overall_status, fall back to inspection.status
         status = (
@@ -2640,6 +1667,28 @@ async def run_inspection(
         detections = inspection_data.get("detections", [])
         xmccv_results = inspection_data.get("xmccv", [])
         xai_result = inspection_data.get("xai", {})
+        
+        if not isinstance(xai_result, dict):
+            xai_result = {}
+
+        ai_explanation = None
+
+        if xai_result:
+            ai_explanation = {
+                key: xai_result[key]
+                for key in (
+                    "defect",
+                    "location",
+                    "explanation",
+                    "recommendation",
+                    "llm_status",
+                    "llm_model",
+                )
+                if xai_result.get(key) is not None
+            }
+
+        if not ai_explanation:
+            ai_explanation = None
 
         # ---------------------------------------------------------
         # 3. Generate the Windows PCB ID
@@ -2688,40 +1737,22 @@ async def run_inspection(
             if defect_classes
             else None
         )
-
-        # ---------------------------------------------------------
-        # 6. Store XAI information
-        # ---------------------------------------------------------
-        xai_explanation = {
-            "inspection_id": pi_inspection_id,
-            "mode": xai_result.get("mode"),
-            "status": xai_result.get("status"),
-            "evidence_path": xai_result.get("evidence_path"),
-            "overlay_path": xai_result.get("overlay_path"),
-            "heatmap_path": xai_result.get("heatmap_path"),
-            "missing_components": xai_result.get(
-                "missing_components",
-                []
-            ),
-        }
-
-        # ---------------------------------------------------------
-        # 7. Create Windows Inspection record
-        # ---------------------------------------------------------
+        
         inspection = Inspection(
             board_id=board_id,
             image_name=image_name,
-            image_path=image_path,
+            image_path=str(image_path) if image_path else None,
             model_name="PCBVision YOLO11s",
-            status=status,
+            status=str(status).upper(),
             confidence=highest_confidence,
             defect_class=defect_class,
             inspection_time=inspection_time,
-            xai_explanation=str(xai_explanation),
+            xai_explanation=str(xai_result or {}),
         )
 
         db.add(inspection)
         db.flush()
+
 
         # ---------------------------------------------------------
         # 8. Create Detection records
@@ -2777,13 +1808,6 @@ async def run_inspection(
         # ---------------------------------------------------------
         db.commit()
         db.refresh(inspection)
-        ai_explanation = await get_ai_explanation(
-            inspection_data=inspection_data,
-            status=status,
-            detections=detections,
-            xmccv_results=xmccv_results,
-            xai_result=xai_result,
-        )
 
         # ---------------------------------------------------------
         # 11. Return Pi result + Windows DB information
@@ -2821,13 +1845,22 @@ async def run_inspection(
             detail=str(exc),
         ) from exc
 
+    
+    
     except Exception as exc:
+        import traceback
+
         db.rollback()
+        traceback.print_exc()
 
         raise HTTPException(
             status_code=500,
-            detail=f"Raspberry Pi inspection/database operation failed: {exc}",
+            detail=(
+                f"Raspberry Pi inspection/database operation failed: "
+                f"{type(exc).__name__}: {exc}"
+            ),
         ) from exc
+
 
 
 @app.get("/api/inspection/{inspection_id}/image")

@@ -120,12 +120,36 @@ const ANALYTICS_C = {
   tooltipBg: "#08140F",
 };
 
+// Default fallback – PCBVision neon green
+const DEFAULT_ANALYTICS_BAR_COLOR = "#00FF9C";
+
 const ANALYTICS_BAR_COLORS = {
+  // Canonical defect classes
   "Solder Bridge": "#FF4D6D",
   "Missing Component": "#FFC857",
   "Polarity Mismatch": "#67D5EB",
   Misalignment: "#22D3EE",
   "Wrong Part": "#A855F7",
+  "Uncategorized Defect": "#00FF9C",
+  // Snake_case / lowercase PCB defect classes
+  missing_pad: "#FFC857",
+  short: "#FF4D6D",
+  open_circuit: "#00E5FF",
+  mouse_bite: "#A855F7",
+  spur: "#22D3EE",
+  spurious_copper: "#67D5EB",
+};
+
+const getAnalyticsBarColor = (entry) => {
+  if (!entry) return DEFAULT_ANALYTICS_BAR_COLOR;
+  const name = typeof entry === "string" ? entry : entry.name || "";
+  if (ANALYTICS_BAR_COLORS[name]) return ANALYTICS_BAR_COLORS[name];
+  const normalized = name.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  for (const [key, val] of Object.entries(ANALYTICS_BAR_COLORS)) {
+    if (key.trim().toLowerCase().replace(/[\s-]+/g, "_") === normalized) return val;
+  }
+  if (entry.color && entry.color !== "#000000" && entry.color !== "black") return entry.color;
+  return DEFAULT_ANALYTICS_BAR_COLOR;
 };
 
 function AnalyticsTooltip({ active, payload, label, suffix = "" }) {
@@ -327,6 +351,7 @@ const AnalyticsGlowCursor = ({ points }) => {
 
 const AnalyticsActiveBar = (props) => {
   const { x, y, width, height, fill } = props;
+  const safeFill = fill && fill !== "#000000" && fill !== "black" ? fill : DEFAULT_ANALYTICS_BAR_COLOR;
   return (
     <rect
       x={x}
@@ -334,9 +359,9 @@ const AnalyticsActiveBar = (props) => {
       width={width}
       height={height}
       rx={4}
-      fill={fill}
+      fill={safeFill}
       style={{
-        filter: "brightness(1.15)",
+        filter: "brightness(1.22) drop-shadow(0 0 8px rgba(0, 255, 156, 0.4))",
         transform: "scaleY(1.02)",
         transformOrigin: "50% 100%",
         transition: "transform 180ms ease-out, filter 180ms ease-out",
@@ -1355,10 +1380,7 @@ export default function DashboardPage() {
                               {defectChart.map((entry, idx) => (
                                 <Cell
                                   key={`cell-${idx}`}
-                                  fill={
-                                    ANALYTICS_BAR_COLORS[entry.name] ||
-                                    entry.color
-                                  }
+                                  fill={getAnalyticsBarColor(entry)}
                                 />
                               ))}
                               <LabelList
