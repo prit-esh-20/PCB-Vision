@@ -344,7 +344,7 @@ export default function AnalyticsPage() {
     );
   }
 
-  const { kpis = [], qualitySummary = [], donutStats = [], yieldRate = 0, defectChart = [], hourlyThroughput = [], trend7Days = [] } = data || {};
+  const { kpis = [], qualitySummary = [], donutStats = [], yieldRate = null, defectChart = [], hourlyThroughput = [], trend7Days = [], processLimit = null } = data || {};
 
   return (
     <AppLayout>
@@ -518,7 +518,7 @@ export default function AnalyticsPage() {
               </GlassCard>
 
               {/* Area Chart: Hourly Throughput */}
-              <GlassCard className="flex h-[350px] flex-col justify-between md:col-span-2 lg:col-span-12" hoverLift={false}>
+              <GlassCard className="relative flex h-[350px] flex-col justify-between overflow-hidden md:col-span-2 lg:col-span-12" hoverLift={false}>
                 <div className="flex items-center justify-between border-b border-accent/5 pb-3 text-left">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-accent" />
@@ -526,10 +526,25 @@ export default function AnalyticsPage() {
                       Shift Throughput Activity
                     </span>
                   </div>
-                  <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">Scans / Hour</span>
+                  <div className="flex items-center gap-3">
+                    {!hourlyThroughput.some((h) => (h.inspected || 0) > 0) && (
+                      <span className="rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 font-mono text-[9px] font-semibold text-accent">
+                        0 Scans Completed Today
+                      </span>
+                    )}
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">Scans / Hour (24h)</span>
+                  </div>
                 </div>
 
-                <div className="mt-5 h-64 w-full">
+                <div className="relative mt-5 h-64 w-full">
+                  {!hourlyThroughput.some((h) => (h.inspected || 0) > 0) && (
+                    <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-[#08140F]/50 backdrop-blur-[1px]">
+                      <span className="font-mono text-xs font-semibold text-slate-300">No inspection records completed today</span>
+                      <span className="mt-1 max-w-sm text-center font-mono text-[10px] text-slate-500">
+                        Activity will populate across the 24-hour timeline as inspections are completed.
+                      </span>
+                    </div>
+                  )}
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={hourlyThroughput} margin={{ left: -10, right: 10, top: 10, bottom: 5 }}>
                       <defs>
@@ -544,7 +559,7 @@ export default function AnalyticsPage() {
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,229,255,0.02)" />
                       <XAxis dataKey="hour" stroke="#64748b" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} />
-                      <YAxis stroke="#64748b" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} />
+                      <YAxis stroke="#64748b" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} allowDecimals={false} />
                       <Tooltip content={<HourlyTooltip />} cursor={<GlowCursor />} />
                       <Legend
                         verticalAlign="top"
@@ -585,28 +600,40 @@ export default function AnalyticsPage() {
                 </div>
               </GlassCard>
 
-              {/* Line Chart: 7 Days Trend */}
-              <GlassCard className="flex h-[320px] flex-col justify-between md:col-span-1 lg:col-span-6" hoverLift={false}>
-                <div className="flex items-center gap-2 border-b border-accent/5 pb-3 text-left">
-                  <TrendingUp className="h-4 w-4 text-accent" />
-                  <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
-                    Weekly Pass Yield Trend
-                  </span>
+              {/* Line Chart: Weekly Pass Yield Trend */}
+              <GlassCard className="relative flex h-[320px] flex-col justify-between overflow-hidden md:col-span-1 lg:col-span-6" hoverLift={false}>
+                <div className="flex items-center justify-between border-b border-accent/5 pb-3 text-left">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-accent" />
+                    <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
+                      Weekly Pass Yield Trend
+                    </span>
+                  </div>
+                  <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">Latest 7 Days</span>
                 </div>
 
-                <div className="mt-5 h-56 w-full">
+                <div className="relative mt-5 h-56 w-full">
+                  {!trend7Days.some((d) => d.hasData && d.passRate != null) && (
+                    <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-[#08140F]/50 backdrop-blur-[1px]">
+                      <span className="font-mono text-xs font-semibold text-slate-300">No verified inspection data</span>
+                      <span className="mt-1 max-w-xs text-center font-mono text-[10px] text-slate-500">
+                        Pass yield trend requires verified completed PASS/FAIL records.
+                      </span>
+                    </div>
+                  )}
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={trend7Days} margin={{ left: -10, right: 10, top: 10, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,229,255,0.02)" />
-                      <XAxis dataKey="day" stroke="#64748b" fontSize={9} fontFamily="Orbitron" tickLine={false} />
-                      <YAxis stroke="#64748b" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} domain={[90, 100]} />
-                      <Tooltip content={<ChartTooltip suffix="%" />} cursor={<GlowCursor />} />
+                      <XAxis dataKey="date" stroke="#64748b" fontSize={9} fontFamily="Orbitron" tickLine={false} />
+                      <YAxis stroke="#64748b" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} />
+                      <Tooltip content={<YieldTrendTooltip />} cursor={<GlowCursor />} />
                       <Line
-                        name="Pass Rate"
+                        name="Pass Yield"
                         type="monotone"
                         dataKey="passRate"
                         stroke={C.pass}
                         strokeWidth={2}
+                        connectNulls={false}
                         isAnimationActive
                         animationBegin={200}
                         animationDuration={850}
@@ -618,28 +645,49 @@ export default function AnalyticsPage() {
                 </div>
               </GlassCard>
 
-              {/* Line Chart: Cycle Time */}
-              <GlassCard className="flex h-[320px] flex-col justify-between md:col-span-1 lg:col-span-6" hoverLift={false}>
-                <div className="flex items-center gap-2 border-b border-accent/5 pb-3 text-left">
-                  <Clock className="h-4 w-4 text-accent" />
-                  <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
-                    Cycle Time Process Limit (7 Days)
-                  </span>
+              {/* Line Chart: Cycle Time Process Limit */}
+              <GlassCard className="relative flex h-[320px] flex-col justify-between overflow-hidden md:col-span-1 lg:col-span-6" hoverLift={false}>
+                <div className="flex items-center justify-between border-b border-accent/5 pb-3 text-left">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-accent" />
+                    <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
+                      Cycle Time Process Limit (7 Days)
+                    </span>
+                  </div>
+                  <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">Latest 7 Days</span>
                 </div>
 
-                <div className="mt-5 h-56 w-full">
+                <div className="relative mt-5 h-56 w-full">
+                  {!trend7Days.some((d) => d.avgTime != null) && (
+                    <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-[#08140F]/50 backdrop-blur-[1px]">
+                      <span className="font-mono text-xs font-semibold text-slate-300">No duration records available</span>
+                      <span className="mt-1 max-w-xs text-center font-mono text-[10px] text-slate-500">
+                        Cycle times are recorded from completed inspection runs.
+                      </span>
+                    </div>
+                  )}
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={trend7Days} margin={{ left: -10, right: 10, top: 10, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,229,255,0.02)" />
-                      <XAxis dataKey="day" stroke="#64748b" fontSize={9} fontFamily="Orbitron" tickLine={false} />
-                      <YAxis stroke="#64748b" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} />
-                      <Tooltip content={<ChartTooltip suffix="s" />} cursor={<GlowCursor />} />
+                      <XAxis dataKey="date" stroke="#64748b" fontSize={9} fontFamily="Orbitron" tickLine={false} />
+                      <YAxis stroke="#64748b" fontSize={9} fontFamily="JetBrains Mono" tickLine={false} domain={[0, "auto"]} />
+                      <Tooltip content={<CycleTimeTooltip processLimit={processLimit} />} cursor={<GlowCursor />} />
+                      {processLimit != null && (
+                        <ReferenceLine
+                          y={processLimit}
+                          stroke="#ffb703"
+                          strokeDasharray="4 4"
+                          strokeWidth={1.5}
+                          label={{ value: `Limit (${processLimit}s)`, fill: "#ffb703", fontSize: 9, position: "top" }}
+                        />
+                      )}
                       <Line
                         name="Avg Cycle Time"
                         type="monotone"
                         dataKey="avgTime"
                         stroke={C.info}
                         strokeWidth={2}
+                        connectNulls={false}
                         isAnimationActive
                         animationBegin={200}
                         animationDuration={850}
