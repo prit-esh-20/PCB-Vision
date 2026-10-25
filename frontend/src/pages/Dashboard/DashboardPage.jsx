@@ -31,24 +31,18 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import {
-  Play,
   Camera,
   Loader2,
   AlertTriangle,
   CheckCircle,
   Clock,
   Bell,
-  Upload,
-  FileText,
-  Download,
-  Image,
   Search,
   ChevronDown,
   Settings,
   LogOut,
   User,
   X,
-  Wrench,
   Plus,
   Wifi,
   Server,
@@ -862,78 +856,6 @@ export default function DashboardPage() {
                 Create New Template
               </motion.button>
             </div>
-          </div>
-        </motion.div>
-
-        {/* ---- QUICK ACTIONS (Preserved buttons & navigation) ---- */}
-        <motion.div variants={itemVariants} className="space-y-2">
-          <div className="flex flex-wrap items-center gap-3">
-            {/* START INSPECTION — routes to PCB Inspection workspace */}
-            <motion.button
-              whileHover={{ scale: 1.03, y: -2 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => navigate("/inspection")}
-              className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest shadow-lg transition-all duration-300 bg-accent text-primary-bg hover:shadow-[0_0_30px_rgba(50,213,131,0.25)]"
-            >
-              <Play className="h-3.5 w-3.5" />
-              Start Inspection
-            </motion.button>
-
-            {/* TEST WITH PCB IMAGE — routes directly into Uploaded-Image mode */}
-            <motion.button
-              whileHover={{ scale: 1.03, y: -2 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() =>
-                navigate("/inspection", { state: { mode: "upload" } })
-              }
-              className="group inline-flex items-center gap-2 rounded-xl border border-accent/20 bg-white/[0.03] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/80 backdrop-blur-sm transition-all duration-300 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-            >
-              <Upload className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-              Test with PCB Image
-            </motion.button>
-          </div>
-
-          {/* Secondary utility actions */}
-          <div className="flex flex-wrap items-center gap-3 border-t border-accent/5 pt-3">
-            <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest text-slate-600">
-              <Wrench className="h-3 w-3" />
-              Utilities
-            </span>
-
-            {/* GENERATE REPORT — navigates to reports workflow */}
-            <motion.button
-              whileHover={{ scale: 1.03, y: -2 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => navigate("/reports")}
-              className="group inline-flex items-center gap-2 rounded-xl border border-accent/20 bg-white/[0.03] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/80 backdrop-blur-sm transition-all duration-300 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-            >
-              <FileText className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-              Generate Report
-            </motion.button>
-
-            {/* EXPORT DATA — navigates to history logs/exports */}
-            <motion.button
-              whileHover={{ scale: 1.03, y: -2 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => navigate("/history")}
-              className="group inline-flex items-center gap-2 rounded-xl border border-accent/20 bg-white/[0.03] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/80 backdrop-blur-sm transition-all duration-300 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-            >
-              <Download className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-              Export Data
-            </motion.button>
-
-            {/* CAPTURE SNAPSHOT — direct link to camera inspection */}
-            <motion.button
-              whileHover={{ scale: 1.03, y: -2 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() =>
-                navigate("/inspection", { state: { mode: "camera" } })
-              }
-              className="group inline-flex items-center gap-2 rounded-xl border border-accent/20 bg-white/[0.03] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/80 backdrop-blur-sm transition-all duration-300 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-            >
-              <Image className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-              Capture Snapshot
-            </motion.button>
           </div>
         </motion.div>
 

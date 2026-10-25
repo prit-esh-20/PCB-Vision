@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import Button from "../../components/common/Button";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
+import { useReport } from "../../hooks/useReport";
 import apiClient from "../../services/apiClient";
 import { uploadApi } from "../../services/api/uploadApi";
 import {
@@ -16,6 +17,7 @@ import {
   Camera,
   Image,
   X,
+  FileText,
 } from "lucide-react";
 
 import InspectionImagePanel from "../../components/inspection/InspectionImagePanel";
@@ -313,6 +315,7 @@ function normalizeInspectionResponse(response) {
 
 export default function LiveInspectionPage() {
   const { cameraStatus } = useCameraStatus();
+  const { generating, generateReport, errorMessage: reportError } = useReport();
   const location = useLocation();
 
   // If navigated from Dashboard "Test with PCB Image" button, default to upload mode
@@ -589,6 +592,28 @@ export default function LiveInspectionPage() {
               </span>
             )}
 
+            {inspection && !isCapturing && !isUploading && (
+              <button
+                type="button"
+                onClick={() => generateReport(inspection)}
+                disabled={generating}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-accent/20 bg-white/[0.03] px-3 py-1.5 text-[9px] font-semibold uppercase tracking-widest text-white/80 transition-all hover:border-accent/40 hover:bg-accent/5 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                title="Generate PDF inspection report"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin text-accent" />
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileText className="h-3 w-3 text-accent" />
+                    <span>Generate Report</span>
+                  </>
+                )}
+              </button>
+            )}
+
             {inspectionMode === "camera" && (
               <Button
                 variant="secondary"
@@ -712,6 +737,15 @@ export default function LiveInspectionPage() {
           </div>
         )}
 
+        {reportError && !generating && (
+          <div className="p-3 rounded-lg border border-danger/30 bg-danger/5">
+            <p className="font-mono text-[10px] text-danger break-words flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-danger shrink-0" />
+              <span>Report generation failed: {reportError}</span>
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.9fr)] gap-5 items-stretch">
 
           <InspectionImagePanel
@@ -753,7 +787,12 @@ export default function LiveInspectionPage() {
 
           <InspectionDecisionPanel
             inspection={inspection}
-            onGenerateReport={() => {}}
+            onGenerateReport={
+              inspection && !isCapturing && !isUploading
+                ? () => generateReport(inspection)
+                : undefined
+            }
+            generating={generating}
             onExport={() => {}}
           />
 
