@@ -53,7 +53,6 @@ import {
   PieChart as LucidePie,
   Gauge,
   ShieldCheck,
-  Timer,
   AlertOctagon,
 } from "lucide-react";
 
@@ -965,16 +964,7 @@ export default function DashboardPage() {
         ) : null}
 
         {/* ---- INTEGRATED SYSTEM QUALITY ANALYTICS ---- */}
-        <motion.div variants={itemVariants} className="space-y-5 pt-2">
-          <div className="flex flex-col gap-1 border-b border-accent/10 pb-3">
-            <h2 className="font-display text-lg font-bold uppercase tracking-wider text-white">
-              System Quality Analytics
-            </h2>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-accent/70">
-              Statistical Yield and Performance Metrics
-            </p>
-          </div>
-
+        <motion.div variants={itemVariants} className="space-y-6">
           {analyticsError && !analyticsData ? (
             <div className="h-48 flex flex-col items-center justify-center gap-2 font-mono text-xs text-slate-500 uppercase tracking-widest rounded-xl border border-accent/5 bg-[#08140F]/60">
               <span className="text-danger">Unable to retrieve analytics data.</span>
@@ -982,8 +972,8 @@ export default function DashboardPage() {
             </div>
           ) : analyticsLoading ? (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {[0, 1, 2, 3].map((i) => (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {[0, 1].map((i) => (
                   <div
                     key={i}
                     className="skeleton-shimmer h-[92px] rounded-xl"
@@ -1020,47 +1010,50 @@ export default function DashboardPage() {
                 trend7Days = [],
               } = analyticsData || {};
 
+              // Remove duplicate metrics already represented in primary Dashboard KPIs
+              // ("Yield Rate" duplicates "Pass Rate", "Inspection Time" duplicates "Avg Inspection Time")
+              const duplicateLabels = new Set([
+                "Yield Rate",
+                "Inspection Time",
+                "Avg Inspection Time",
+              ]);
+              const distinctKpis = kpis.filter(
+                (kpi) => !duplicateLabels.has(kpi.label)
+              );
+
               return (
                 <div className="space-y-6">
-                  {/* KPI Mini Cards */}
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    {kpis.map((kpi, i) => {
-                      const kpiMeta = [
-                        {
+                  {/* Distinct Analytics KPI Cards */}
+                  {distinctKpis.length > 0 && (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      {distinctKpis.map((kpi, i) => {
+                        const kpiMeta = {
+                          "Today's Defects": {
+                            icon: AlertOctagon,
+                            valueClass: "text-danger",
+                            accent: "text-danger",
+                          },
+                          "Avg Confidence": {
+                            icon: ShieldCheck,
+                            valueClass: "text-accent",
+                            accent: "text-accent",
+                          },
+                        }[kpi.label] || {
                           icon: Gauge,
-                          valueClass: "text-success",
-                          accent: "text-success",
-                        },
-                        {
-                          icon: AlertOctagon,
-                          valueClass: "text-danger",
-                          accent: "text-danger",
-                        },
-                        {
-                          icon: ShieldCheck,
                           valueClass: "text-accent",
                           accent: "text-accent",
-                        },
-                        {
-                          icon: Timer,
-                          valueClass: "text-cyan-400",
-                          accent: "text-cyan-400",
-                        },
-                      ][i] || {
-                        icon: Gauge,
-                        valueClass: "text-accent",
-                        accent: "text-accent",
-                      };
-                      return (
-                        <AnalyticsMiniKpi
-                          key={kpi.label}
-                          {...kpi}
-                          {...kpiMeta}
-                          delay={0.05 + i * 0.05}
-                        />
-                      );
-                    })}
-                  </div>
+                        };
+                        return (
+                          <AnalyticsMiniKpi
+                            key={kpi.label}
+                            {...kpi}
+                            {...kpiMeta}
+                            delay={0.05 + i * 0.05}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {/* Charts Grid */}
                   <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-12">
