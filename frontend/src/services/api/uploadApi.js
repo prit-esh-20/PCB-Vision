@@ -113,4 +113,28 @@ export const uploadApi = {
 
     return data;
   },
+
+  // Cancel an active template capture session and discard partial progress.
+  async cancelTemplate(sessionId) {
+    if (API_CONFIG.useMock) {
+      throw new Error(
+        "Template creation requires the real backend."
+      );
+    }
+
+    if (!sessionId) {
+      throw new Error(
+        "No active template capture session."
+      );
+    }
+
+    const { data } = await apiClient.post(
+      "/template/cancel",
+      {
+        session_id: sessionId,
+      }
+    );
+
+    return data;
+  },
 };

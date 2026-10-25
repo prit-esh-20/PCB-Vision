@@ -198,9 +198,31 @@ export default function DashboardPage() {
   const [actionStatus, setActionStatus] = useState(null);
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
   const [templateImageCount, setTemplateImageCount] = useState(4);
-  const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
-  const [templateModalMessage, setTemplateModalMessage] = useState("");
   const [templateName, setTemplateName] = useState("");
+  const [templateModalMessage, setTemplateModalMessage] = useState("");
+  // Manual template-capture session state. Each image requires an explicit
+  // "Capture Image" press — the frontend never captures automatically.
+  const [sessionId, setSessionId] = useState(null);
+  const [capturedCount, setCapturedCount] = useState(0);
+  const [startingCapture, setStartingCapture] = useState(false);
+  const [capturingImage, setCapturingImage] = useState(false);
+  const [finishingTemplate, setFinishingTemplate] = useState(false);
+  const [cancellingSession, setCancellingSession] = useState(false);
+
+  const anyActionInProgress =
+    startingCapture ||
+    capturingImage ||
+    finishingTemplate ||
+    cancellingSession;
+
+  const resetTemplateSession = useCallback(() => {
+    setSessionId(null);
+    setCapturedCount(0);
+    setStartingCapture(false);
+    setCapturingImage(false);
+    setFinishingTemplate(false);
+    setCancellingSession(false);
+  }, []);
   const notifRef = useRef(null);
   const userRef = useRef(null);
   const searchRef = useRef(null);
@@ -488,6 +510,162 @@ export default function DashboardPage() {
       text: "Snapshot captured successfully.",
     });
   }, [captureSnapshot, inspection, notify]);
+
+  // ---- Manual template-capture handlers -----------------------------------
+  // Each step is a single explicit user action. The frontend never captures
+  // automatically; the Raspberry Pi captures exactly one image per request.
+
+  const handleStartCapture = useCallback(async () => {
+    if (!templateName.trim()) {
+      setTemplateModalMessage("Please enter a template name.");
+      return;
+    }
+
+    if (templateImageCount < 4 || templateImageCount > 5) {
+      setTemplateModalMessage(
+        "Reference image count must be between 4 and 5.",
+      );
+      return;
+    }
+
+    setStartingCapture(true);
+    setTemplateModalMessage("");
+
+    try {
+      const result = await uploadApi.startTemplate({
+        templateName,
+        expectedImages: templateImageCount,
+      });
+
+      const newSessionId = result.session_id || result.template_id;
+      if (!newSessionId) {
+        throw new Error(
+          "Backend did not return a template session ID.",
+        );
+      }
+
+      setSessionId(newSessionId);
+      setCapturedCount(
+        Number(result.captured_images ?? 0) || 0,
+      );
+      setTemplateModalMessage(
+        `Session started. Capture reference images one at a time.`,
+      );
+    } catch (err) {
+      setTemplateModalMessage(
+        err?.message ||
+          "Could not start template capture session. Please try again.",
+      );
+    } finally {
+      setStartingCapture(false);
+    }
+  }, [templateName, templateImageCount]);
+
+  const handleCaptureImage = useCallback(async () => {
+    if (!sessionId) {
+      setTemplateModalMessage(
+        "No active template capture session. Start capture first.",
+      );
+      return;
+    }
+
+    if (capturingImage) return;
+    setCapturingImage(true);
+    setTemplateModalMessage("");
+
+    try {
+      const result = await uploadApi.captureTemplateImage(sessionId);
+
+      const newCount = Number(result.captured_images ?? 0);
+      if (Number.isFinite(newCount)) {
+        setCapturedCount(newCount);
+      }
+
+      setTemplateModalMessage(
+        `Captured image ${result.captured_images ?? "?"} of ${result.expected_images ?? templateImageCount}. Adjust the PCB, then capture the next image.`,
+      );
+    } catch (err) {
+      setTemplateModalMessage(
+        err?.message ||
+          "Could not capture reference image. Please try again.",
+      );
+    } finally {
+      setCapturingImage(false);
+    }
+  }, [sessionId, capturingImage, templateImageCount]);
+
+  const handleFinishTemplate = useCallback(async () => {
+    if (!sessionId) {
+      setTemplateModalMessage(
+        "No active template capture session. Start capture first.",
+      );
+      return;
+    }
+
+    if (capturedCount !== templateImageCount) {
+      setTemplateModalMessage(
+        `Capture all ${templateImageCount} reference images before finishing. Currently captured: ${capturedCount}.`,
+      );
+      return;
+    }
+
+    setFinishingTemplate(true);
+    setTemplateModalMessage("");
+
+    try {
+      const result = await uploadApi.finishTemplate(sessionId);
+
+      setTemplateModalMessage(
+        `Template "${templateName || "Untitled"}" saved successfully.`,
+      );
+
+      // Reset modal state after a short delay so the success message shows.
+      setTimeout(() => {
+        setShowCreateTemplateModal(false);
+        setTemplateName("");
+        setTemplateImageCount(4);
+        setTemplateModalMessage("");
+        resetTemplateSession();
+      }, 1500);
+    } catch (err) {
+      setTemplateModalMessage(
+        err?.message ||
+          "Could not finish template. Please try again.",
+      );
+    } finally {
+      setFinishingTemplate(false);
+    }
+  }, [
+    sessionId,
+    capturedCount,
+    templateImageCount,
+    templateName,
+    resetTemplateSession,
+  ]);
+
+  const handleCancelTemplateSession = useCallback(async () => {
+    if (!sessionId) {
+      return;
+    }
+
+    if (cancellingSession) return;
+    setCancellingSession(true);
+
+    try {
+      await uploadApi.cancelTemplate(sessionId);
+    } catch (err) {
+      setTemplateModalMessage(
+        err?.message ||
+          "Could not cancel the template session on the Raspberry Pi.",
+      );
+    } finally {
+      // Always clear the local session state so the modal is not left
+      // stranded behind an in-progress capture.
+      setSessionId(null);
+      setCapturedCount(0);
+      setCancellingSession(false);
+    }
+  }, [sessionId, cancellingSession]);
 
   // ---- Derived inspection metrics ------------------------------------------
   const presenceFailures =
@@ -886,7 +1064,9 @@ export default function DashboardPage() {
                 whileTap={{ scale: 0.97 }}
                 onClick={() => {
                   setTemplateImageCount(4);
+                  setTemplateName("");
                   setTemplateModalMessage("");
+                  resetTemplateSession();
                   setShowCreateTemplateModal(true);
                 }}
                 className="group inline-flex items-center gap-2 rounded-xl border border-accent/20 bg-white/[0.03] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
@@ -1960,10 +2140,20 @@ export default function DashboardPage() {
       <Modal
         isOpen={showCreateTemplateModal}
         onClose={() => {
-          if (isCreatingTemplate) return;
+          if (anyActionInProgress) return;
+
+          // Cancel an active, incomplete session before discarding it so the
+          // Raspberry Pi capture session is not silently abandoned.
+          if (sessionId && capturedCount < templateImageCount) {
+            handleCancelTemplateSession();
+            return;
+          }
 
           setShowCreateTemplateModal(false);
+          setTemplateName("");
+          setTemplateImageCount(4);
           setTemplateModalMessage("");
+          resetTemplateSession();
         }}
         title="Create New Template"
       >
@@ -1987,7 +2177,7 @@ export default function DashboardPage() {
               value={templateName}
               onChange={(e) => setTemplateName(e.target.value)}
               placeholder="Enter template name"
-              disabled={isCreatingTemplate}
+              disabled={anyActionInProgress || !!sessionId}
               className="w-full rounded-lg border border-accent/20 bg-white/[0.02] px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-accent/40 focus:ring-2 focus:ring-accent/15 transition-all disabled:opacity-50"
             />
           </div>
@@ -2014,7 +2204,7 @@ export default function DashboardPage() {
                   setTemplateImageCount(val);
                 }
               }}
-              disabled={isCreatingTemplate}
+              disabled={anyActionInProgress || !!sessionId}
               className="w-full rounded-lg border border-accent/20 bg-white/[0.02] px-4 py-2.5 text-white placeholder:text-slate-500 outline-none focus:border-accent/40 focus:ring-2 focus:ring-accent/15 transition-all disabled:opacity-50"
             />
 
@@ -2023,7 +2213,8 @@ export default function DashboardPage() {
               <span className="font-semibold text-accent">
                 {templateImageCount}
               </span>{" "}
-              reference images automatically.
+              reference images — one at a time, only when you press Capture
+              Image. Reposition the PCB between captures.
             </p>
           </div>
 
@@ -2038,12 +2229,36 @@ export default function DashboardPage() {
                 </p>
 
                 <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                  When you continue, the Raspberry Pi will capture the selected
-                  number of reference images and use them to build the template.
+                  Press Start Capture to open a session, then press Capture
+                  Image once per reference photo. Reposition the PCB between
+                  captures. Finish when all images are captured.
                 </p>
               </div>
             </div>
           </div>
+
+          {/* PROGRESS */}
+          {sessionId && (
+            <div className="rounded-lg border border-accent/10 bg-accent/[0.03] px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
+                  Capture Progress
+                </span>
+                <span className="font-mono text-[10px] font-bold text-white">
+                  {capturedCount} of {templateImageCount} images captured
+                </span>
+              </div>
+
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-accent/10">
+                <div
+                  className="h-full bg-accent transition-all duration-300"
+                  style={{
+                    width: `${(capturedCount / templateImageCount) * 100}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* MESSAGE */}
           {templateModalMessage && (
@@ -2065,80 +2280,99 @@ export default function DashboardPage() {
             {/* CANCEL */}
             <button
               onClick={() => {
+                if (anyActionInProgress) return;
+
+                if (sessionId && capturedCount < templateImageCount) {
+                  // Cancel an active, incomplete session on the Pi first.
+                  handleCancelTemplateSession().then(() => {
+                    setShowCreateTemplateModal(false);
+                    setTemplateName("");
+                    setTemplateImageCount(4);
+                    setTemplateModalMessage("");
+                    resetTemplateSession();
+                  });
+                  return;
+                }
+
                 setShowCreateTemplateModal(false);
-                setTemplateModalMessage("");
                 setTemplateName("");
                 setTemplateImageCount(4);
+                setTemplateModalMessage("");
+                resetTemplateSession();
               }}
-              disabled={isCreatingTemplate}
+              disabled={anyActionInProgress}
               className="inline-flex items-center gap-2 rounded-lg border border-accent/20 bg-white/[0.03] px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-white/80 transition-all hover:border-accent/40 hover:bg-accent/5 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Cancel
+              {!sessionId
+                ? "Cancel"
+                : capturedCount < templateImageCount
+                  ? "Cancel Session"
+                  : "Close"}
             </button>
 
-            {/* CREATE */}
-            <button
-              onClick={async () => {
-                if (!templateName.trim()) {
-                  setTemplateModalMessage("Please enter a template name.");
-                  return;
-                }
+            {/* START CAPTURE — shown only before a session is open */}
+            {!sessionId && (
+              <button
+                onClick={handleStartCapture}
+                disabled={startingCapture || anyActionInProgress}
+                className="inline-flex items-center gap-2 rounded-lg bg-accent/15 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-accent border border-accent/30 transition-all hover:bg-accent/25 hover:border-accent/50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {startingCapture ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="h-3.5 w-3.5" />
+                    Start Capture
+                  </>
+                )}
+              </button>
+            )}
 
-                if (templateImageCount < 4 || templateImageCount > 5) {
-                  setTemplateModalMessage(
-                    "Reference image count must be between 4 and 5.",
-                  );
-                  return;
-                }
+            {/* CAPTURE IMAGE — shown only while a session is open and not yet
+                complete. Each press captures exactly one image. */}
+            {sessionId && capturedCount < templateImageCount && (
+              <button
+                onClick={handleCaptureImage}
+                disabled={capturingImage || anyActionInProgress}
+                className="inline-flex items-center gap-2 rounded-lg bg-accent/15 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-accent border border-accent/30 transition-all hover:bg-accent/25 hover:border-accent/50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {capturingImage ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Capturing...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="h-3.5 w-3.5" />
+                    Capture Image
+                  </>
+                )}
+              </button>
+            )}
 
-                setIsCreatingTemplate(true);
-                setTemplateModalMessage(
-                  `Preparing to capture ${templateImageCount} reference images...`,
-                );
-
-                try {
-                  const result = await uploadApi.createTemplate({
-                    templateName,
-                    expectedImages: templateImageCount,
-                  });
-
-                  setTemplateModalMessage(
-                    `Template "${templateName}" created successfully!`,
-                  );
-
-                  // Clear form on success
-                  setTemplateName("");
-                  setTemplateImageCount(4);
-
-                  // Close modal after showing success
-                  setTimeout(() => {
-                    setShowCreateTemplateModal(false);
-                    setTemplateModalMessage("");
-                  }, 2000);
-                } catch (err) {
-                  setTemplateModalMessage(
-                    err?.message ||
-                      "Template creation failed. Please try again.",
-                  );
-                } finally {
-                  setIsCreatingTemplate(false);
-                }
-              }}
-              disabled={isCreatingTemplate}
-              className="inline-flex items-center gap-2 rounded-lg bg-accent/15 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-accent border border-accent/30 transition-all hover:bg-accent/25 hover:border-accent/50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isCreatingTemplate ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Capturing...
-                </>
-              ) : (
-                <>
-                  <Camera className="h-3.5 w-3.5" />
-                  Continue
-                </>
-              )}
-            </button>
+            {/* FINISH TEMPLATE — shown only when all images captured */}
+            {sessionId && capturedCount >= templateImageCount && (
+              <button
+                onClick={handleFinishTemplate}
+                disabled={finishingTemplate || anyActionInProgress}
+                className="inline-flex items-center gap-2 rounded-lg bg-accent/15 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-accent border border-accent/30 transition-all hover:bg-accent/25 hover:border-accent/50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {finishingTemplate ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Finishing...
+                  </>
+                ) : (
+                  <>
+                    <FileCheck className="h-3.5 w-3.5" />
+                    Finish Template
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </Modal>
