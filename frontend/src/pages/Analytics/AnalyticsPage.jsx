@@ -19,6 +19,7 @@ import {
   Tooltip, 
   Legend, 
   LabelList,
+  ReferenceLine,
   ResponsiveContainer 
 } from "recharts";
 import { 
@@ -86,18 +87,20 @@ function ChartTooltip({ active, payload, label, suffix = "" }) {
   );
 }
 
-// ── Hourly tooltip: Time / Inspected / Passed / Failed / Confidence ──────
+// ── Hourly tooltip: Time / Inspected / Passed / Failed / Pass Rate ──────
 function HourlyTooltip({ active, payload, label }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0]?.payload;
   if (!d) return null;
-  const failed = d.inspected - d.pass;
-  const confidence = ((d.pass / d.inspected) * 100).toFixed(1);
+  const inspected = d.inspected ?? 0;
+  const pass = d.pass ?? 0;
+  const failed = inspected - pass;
+  const passRate = inspected > 0 ? ((pass / inspected) * 100).toFixed(1) + "%" : "—";
   const rows = [
-    { label: "Inspected", value: d.inspected, color: C.info },
-    { label: "Passed", value: d.pass, color: C.pass },
-    { label: "Failed", value: failed, color: C.crit },
-    { label: "Confidence", value: `${confidence}%`, color: C.xai },
+    { label: "Total Inspected", value: inspected, color: C.info },
+    { label: "Passed Units", value: pass, color: C.pass },
+    { label: "Failed Units", value: failed, color: C.crit },
+    { label: "Pass Rate", value: passRate, color: C.xai },
   ];
   return (
     <div
@@ -110,7 +113,7 @@ function HourlyTooltip({ active, payload, label }) {
       }}
     >
       <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.2em]" style={{ color: "#7ce7ac" }}>
-        {label} Shift
+        {label} Shift Hour
       </p>
       <div className="space-y-1">
         {rows.map((r) => (
@@ -119,6 +122,88 @@ function HourlyTooltip({ active, payload, label }) {
             <span className="font-bold" style={{ color: r.color }}>{r.value}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Weekly Yield Tooltip: Date, Completed count, Passed count, Failed, Pass Yield ──
+function YieldTrendTooltip({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  return (
+    <div
+      className="tooltip-pop pointer-events-none rounded-xl border px-4 py-2.5 font-mono"
+      style={{
+        background: C.tooltipBg,
+        border: `1px solid ${C.glow}`,
+        borderRadius: 12,
+        boxShadow: "0 0 24px rgba(31,227,138,0.12), 0 12px 32px rgba(0,0,0,0.5)",
+      }}
+    >
+      <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.2em]" style={{ color: "#7ce7ac" }}>
+        {d.fullDate || d.date || label} ({d.day})
+      </p>
+      <div className="space-y-1 text-[10px]">
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-slate-200">Completed Inspections</span>
+          <span className="font-bold text-white">{d.inspected ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-slate-200">Passed Units</span>
+          <span className="font-bold text-success">{d.pass ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-slate-200">Failed Units</span>
+          <span className="font-bold text-danger">{d.fail ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-6 border-t border-white/10 pt-1">
+          <span className="text-slate-200">Pass Yield</span>
+          <span className="font-bold text-accent">
+            {d.passRate != null ? `${d.passRate.toFixed(1)}%` : "No completed data"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Cycle Time Tooltip: Date, Completed count, Avg duration, configured Process Limit ──
+function CycleTimeTooltip({ active, payload, label, processLimit }) {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  return (
+    <div
+      className="tooltip-pop pointer-events-none rounded-xl border px-4 py-2.5 font-mono"
+      style={{
+        background: C.tooltipBg,
+        border: `1px solid ${C.glow}`,
+        borderRadius: 12,
+        boxShadow: "0 0 24px rgba(31,227,138,0.12), 0 12px 32px rgba(0,0,0,0.5)",
+      }}
+    >
+      <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.2em]" style={{ color: "#7ce7ac" }}>
+        {d.fullDate || d.date || label} ({d.day})
+      </p>
+      <div className="space-y-1 text-[10px]">
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-slate-200">Completed Inspections</span>
+          <span className="font-bold text-white">{d.inspected ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-slate-200">Avg Duration</span>
+          <span className="font-bold text-cyan-400">
+            {d.avgTime != null ? `${d.avgTime.toFixed(2)}s` : "No duration data"}
+          </span>
+        </div>
+        {processLimit != null && (
+          <div className="flex items-center justify-between gap-6 border-t border-white/10 pt-1">
+            <span className="text-amber-400">Process Limit</span>
+            <span className="font-bold text-amber-400">{processLimit.toFixed(2)}s</span>
+          </div>
+        )}
       </div>
     </div>
   );

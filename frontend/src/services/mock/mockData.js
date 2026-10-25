@@ -474,13 +474,13 @@ export const HOURLY_THROUGHPUT_DATA = [
 ];
 
 export const TREND_7_DAYS = [
-  { day: "Mon", passRate: 94.2, avgTime: 1.68 },
-  { day: "Tue", passRate: 93.8, avgTime: 1.64 },
-  { day: "Wed", passRate: 95.1, avgTime: 1.58 },
-  { day: "Thu", passRate: 92.6, avgTime: 1.69 },
-  { day: "Fri", passRate: 94.8, avgTime: 1.61 },
-  { day: "Sat", passRate: 96.0, avgTime: 1.55 },
-  { day: "Sun", passRate: 93.9, avgTime: 1.62 },
+  { day: "Oct 19", date: "Oct 19", fullDate: "2026-10-19", weekday: "Mon", passRate: 94.2, avgTime: 1.68, inspected: 120, pass: 113, fail: 7, hasData: true },
+  { day: "Oct 20", date: "Oct 20", fullDate: "2026-10-20", weekday: "Tue", passRate: 93.8, avgTime: 1.64, inspected: 115, pass: 108, fail: 7, hasData: true },
+  { day: "Oct 21", date: "Oct 21", fullDate: "2026-10-21", weekday: "Wed", passRate: 95.1, avgTime: 1.58, inspected: 130, pass: 124, fail: 6, hasData: true },
+  { day: "Oct 22", date: "Oct 22", fullDate: "2026-10-22", weekday: "Thu", passRate: 92.6, avgTime: 1.69, inspected: 110, pass: 102, fail: 8, hasData: true },
+  { day: "Oct 23", date: "Oct 23", fullDate: "2026-10-23", weekday: "Fri", passRate: 94.8, avgTime: 1.61, inspected: 125, pass: 118, fail: 7, hasData: true },
+  { day: "Oct 24", date: "Oct 24", fullDate: "2026-10-24", weekday: "Sat", passRate: 96.0, avgTime: 1.55, inspected: 80, pass: 77, fail: 3, hasData: true },
+  { day: "Oct 25", date: "Oct 25", fullDate: "2026-10-25", weekday: "Sun", passRate: 93.9, avgTime: 1.62, inspected: 65, pass: 61, fail: 4, hasData: true },
 ];
 
 export const MOCK_ANALYTICS = {

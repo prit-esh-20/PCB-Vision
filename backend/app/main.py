@@ -1,3 +1,4 @@
+import os
 import sys
 import httpx
 from pathlib import Path
@@ -857,276 +858,369 @@ def get_inspection_history(
         "pageSize": pageSize,
     }
 
+# -----------------------------------------------------------------------------
+# Analytics and Statistics Aggregation Engine
+# -----------------------------------------------------------------------------
+KNOWN_DEFECT_CLASSES = {
+    "Solder Bridge",
+    "Missing Component",
+    "Polarity Mismatch",
+    "Misalignment",
+    "Wrong Part",
+}
+
+def get_system_timezone():
+    tz_env = os.getenv("SYSTEM_TIMEZONE")
+    if tz_env:
+        try:
+            import zoneinfo
+            return zoneinfo.ZoneInfo(tz_env)
+        except Exception:
+            pass
+    local_tz = datetime.now().astimezone().tzinfo
+    return local_tz if local_tz is not None else timezone.utc
+
+def to_local_datetime(dt: datetime, sys_tz) -> datetime:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(sys_tz)
+
+def is_verified_completed(record: Inspection) -> bool:
+    """Only inspections with confirmed final outcomes (PASS or FAIL) are completed."""
+    status = str(record.status or "").strip().upper()
+    return status in ("PASS", "FAIL")
+
+def is_verified_pass(record: Inspection) -> bool:
+    return str(record.status or "").strip().upper() == "PASS"
+
+def is_verified_fail(record: Inspection) -> bool:
+    return str(record.status or "").strip().upper() == "FAIL"
+
+def count_record_defects(record: Inspection) -> int:
+    """Count actual defects on failed boards, without treating detected components as defects."""
+    if is_verified_pass(record):
+        return 0
+    if not is_verified_fail(record):
+        return 0
+    raw = str(record.defect_class or "").strip()
+    if not raw or raw.lower() == "none":
+        return 1
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    matched = [p for p in parts if p in KNOWN_DEFECT_CLASSES]
+    return len(matched) if matched else 1
+
+def compute_daily_stats(records: list[Inspection]) -> dict:
+    completed = [r for r in records if is_verified_completed(r)]
+    passed = sum(1 for r in completed if is_verified_pass(r))
+    failed = len(completed) - passed
+    inspected = len(completed)
+
+    if inspected > 0:
+        pass_rate = round((passed / inspected) * 100.0, 1)
+    else:
+        pass_rate = None
+
+    valid_times = [
+        float(r.inspection_time)
+        for r in completed
+        if r.inspection_time is not None and float(r.inspection_time) > 0
+    ]
+    if valid_times:
+        avg_cycle_time = round(sum(valid_times) / len(valid_times), 2)
+    else:
+        avg_cycle_time = None
+
+    valid_confidences = [
+        float(r.confidence)
+        for r in completed
+        if r.confidence is not None
+    ]
+    if valid_confidences:
+        multiplier = 100.0 if max(valid_confidences) <= 1.0 else 1.0
+        avg_confidence = round((sum(valid_confidences) / len(valid_confidences)) * multiplier, 1)
+    else:
+        avg_confidence = None
+
+    defects = sum(count_record_defects(r) for r in completed)
+
+    return {
+        "inspected": inspected,
+        "pass": passed,
+        "fail": failed,
+        "passRate": pass_rate,
+        "avgCycleTime": avg_cycle_time,
+        "avgConfidence": avg_confidence,
+        "defects": defects,
+    }
+
+def compute_comparison_trends(today: dict, yesterday: dict) -> dict:
+    if yesterday["inspected"] > 0:
+        diff_pct = round(((today["inspected"] - yesterday["inspected"]) / yesterday["inspected"]) * 100.0, 1)
+        inspected_trend = f"{diff_pct:+.1f}%"
+        inspected_up = diff_pct >= 0
+    else:
+        inspected_trend = None
+        inspected_up = True
+
+    if today["passRate"] is not None and yesterday["passRate"] is not None:
+        diff = round(today["passRate"] - yesterday["passRate"], 1)
+        pass_rate_trend = f"{diff:+.1f}%"
+        pass_rate_up = diff >= 0
+    else:
+        pass_rate_trend = None
+        pass_rate_up = True
+
+    if yesterday["inspected"] > 0:
+        diff = today["fail"] - yesterday["fail"]
+        failed_trend = f"{diff:+d}" if diff != 0 else "0"
+        failed_up = diff <= 0
+    else:
+        failed_trend = None
+        failed_up = True
+
+    if today["avgCycleTime"] is not None and yesterday["avgCycleTime"] is not None:
+        diff = round(today["avgCycleTime"] - yesterday["avgCycleTime"], 2)
+        cycle_time_trend = f"{diff:+.2f}s"
+        cycle_time_up = diff <= 0
+    else:
+        cycle_time_trend = None
+        cycle_time_up = True
+
+    if yesterday["defects"] > 0:
+        diff_pct = round(((today["defects"] - yesterday["defects"]) / yesterday["defects"]) * 100.0, 1)
+        defects_trend = f"{diff_pct:+.1f}%"
+        defects_up = diff_pct <= 0
+    elif today["defects"] > 0:
+        defects_trend = f"+{today['defects']}"
+        defects_up = False
+    else:
+        defects_trend = None
+        defects_up = True
+
+    if today["avgConfidence"] is not None and yesterday["avgConfidence"] is not None:
+        diff = round(today["avgConfidence"] - yesterday["avgConfidence"], 1)
+        confidence_trend = f"{diff:+.1f}%"
+        confidence_up = diff >= 0
+    else:
+        confidence_trend = None
+        confidence_up = True
+
+    return {
+        "inspectedTrend": inspected_trend,
+        "inspectedUp": inspected_up,
+        "passRateTrend": pass_rate_trend,
+        "passRateUp": pass_rate_up,
+        "failTrend": failed_trend,
+        "failUp": failed_up,
+        "cycleTimeTrend": cycle_time_trend,
+        "cycleTimeUp": cycle_time_up,
+        "defectsTrend": defects_trend,
+        "defectsUp": defects_up,
+        "confidenceTrend": confidence_trend,
+        "confidenceUp": confidence_up,
+    }
+
+
 @app.get("/api/analytics")
+@app.get("/analytics")
 def get_analytics(db: Session = Depends(get_db)):
-    now = datetime.now(timezone.utc)
+    sys_tz = get_system_timezone()
+    now_local = datetime.now(sys_tz)
 
-    start_today = now.replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
+    start_of_today_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_today_local = start_of_today_local + timedelta(days=1)
 
-    start_yesterday = start_today - timedelta(days=1)
+    start_of_yesterday_local = start_of_today_local - timedelta(days=1)
+    end_of_yesterday_local = start_of_today_local
 
-    start_7_days = start_today - timedelta(days=6)
+    start_of_7days_local = start_of_today_local - timedelta(days=6)
+    start_7days_utc = start_of_7days_local.astimezone(timezone.utc)
 
-    # ---------------------------------------------------------
-    # Today's inspections
-    # ---------------------------------------------------------
-    today_inspections = (
+    # Fetch 7 days of inspections in one query
+    recent_records = (
         db.query(Inspection)
-        .filter(Inspection.created_at >= start_today)
+        .filter(Inspection.created_at >= start_7days_utc)
         .all()
     )
 
-    yesterday_inspections = (
-        db.query(Inspection)
-        .filter(
-            Inspection.created_at >= start_yesterday,
-            Inspection.created_at < start_today,
-        )
-        .all()
-    )
-
-    recent_inspections = (
-        db.query(Inspection)
-        .filter(Inspection.created_at >= start_7_days)
-        .all()
-    )
-
-    def calculate_yield(records):
-        if not records:
-            return 0.0
-
-        passed = sum(
-            1 for record in records
-            if str(record.status or "").upper() == "PASS"
-        )
-
-        return round((passed / len(records)) * 100, 1)
-
-    def calculate_average(records, field):
-        values = [
-            getattr(record, field)
-            for record in records
-            if getattr(record, field) is not None
-        ]
-
-        if not values:
-            return 0.0
-
-        return round(sum(values) / len(values), 2)
-
-    # ---------------------------------------------------------
-    # KPI calculations
-    # ---------------------------------------------------------
-    today_yield = calculate_yield(today_inspections)
-    yesterday_yield = calculate_yield(yesterday_inspections)
-
-    today_defects = sum(
-        1
-        for record in today_inspections
-        if str(record.status or "").upper() != "PASS"
-    )
-
-    yesterday_defects = sum(
-        1
-        for record in yesterday_inspections
-        if str(record.status or "").upper() != "PASS"
-    )
-
-    today_confidence = calculate_average(
-        today_inspections,
-        "confidence",
-    )
-
-    yesterday_confidence = calculate_average(
-        yesterday_inspections,
-        "confidence",
-    )
-
-    today_cycle_time = calculate_average(
-        today_inspections,
-        "inspection_time",
-    )
-
-    yesterday_cycle_time = calculate_average(
-        yesterday_inspections,
-        "inspection_time",
-    )
-
-    defect_change = 0.0
-    if yesterday_defects:
-        defect_change = round(
-            ((today_defects - yesterday_defects) / yesterday_defects) * 100,
-            1,
-        )
-
-    confidence_change = round(
-        today_confidence - yesterday_confidence,
-        1,
-    )
-
-    cycle_change = round(
-        today_cycle_time - yesterday_cycle_time,
-        2,
-    )
-
-    yield_change = round(
-        today_yield - yesterday_yield,
-        1,
-    )
-
-    # ---------------------------------------------------------
-    # Defect categories
-    # ---------------------------------------------------------
-    defect_counts = {}
-
-    for record in today_inspections:
-        defect = str(record.defect_class or "").strip()
-
-        if not defect or defect.lower() == "none":
-            continue
-
-        defect_counts[defect] = defect_counts.get(defect, 0) + 1
-
-    defect_chart = [
-        {
-            "name": name,
-            "count": count,
-        }
-        for name, count in sorted(
-            defect_counts.items(),
-            key=lambda item: item[1],
-            reverse=True,
-        )
+    # Segment today and yesterday using accurate local calendar days
+    today_records = [
+        r for r in recent_records
+        if start_of_today_local <= to_local_datetime(r.created_at, sys_tz) < end_of_today_local
+    ]
+    yesterday_records = [
+        r for r in recent_records
+        if start_of_yesterday_local <= to_local_datetime(r.created_at, sys_tz) < end_of_yesterday_local
     ]
 
-    # ---------------------------------------------------------
-    # Hourly throughput
-    # ---------------------------------------------------------
-    hourly_throughput = []
+    today_stats = compute_daily_stats(today_records)
+    yesterday_stats = compute_daily_stats(yesterday_records)
+    trends = compute_comparison_trends(today_stats, yesterday_stats)
 
+    # Hourly throughput timeline for current day (all 24 hours in local time)
+    hourly_throughput = []
+    today_completed = [r for r in today_records if is_verified_completed(r)]
     for hour in range(24):
         hour_records = [
-            record
-            for record in today_inspections
-            if record.created_at
-            and record.created_at.hour == hour
+            r for r in today_completed
+            if to_local_datetime(r.created_at, sys_tz).hour == hour
         ]
-
-        if not hour_records:
-            continue
-
-        passed = sum(
-            1
-            for record in hour_records
-            if str(record.status or "").upper() == "PASS"
-        )
+        h_passed = sum(1 for r in hour_records if is_verified_pass(r))
+        h_inspected = len(hour_records)
+        h_fail = h_inspected - h_passed
+        conf_list = [float(r.confidence) for r in hour_records if r.confidence is not None]
+        if conf_list:
+            mult = 100.0 if max(conf_list) <= 1.0 else 1.0
+            h_conf = round((sum(conf_list) / len(conf_list)) * mult, 1)
+        else:
+            h_conf = None
 
         hourly_throughput.append({
             "hour": f"{hour:02d}:00",
-            "inspected": len(hour_records),
-            "pass": passed,
-            "fail": len(hour_records) - passed,
+            "inspected": h_inspected,
+            "pass": h_passed,
+            "fail": h_fail,
+            "confidence": h_conf,
         })
 
-    # ---------------------------------------------------------
-    # Seven-day trend
-    # ---------------------------------------------------------
-    trend_7_days = []
+    # Defect breakdown from verified failures
+    defect_counts = {}
+    for r in today_completed:
+        if not is_verified_fail(r):
+            continue
+        raw = str(r.defect_class or "").strip()
+        if not raw or raw.lower() == "none":
+            defect_counts["Uncategorized Defect"] = defect_counts.get("Uncategorized Defect", 0) + 1
+            continue
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        matched = [p for p in parts if p in KNOWN_DEFECT_CLASSES]
+        if matched:
+            for d in matched:
+                defect_counts[d] = defect_counts.get(d, 0) + 1
+        else:
+            defect_counts["Uncategorized Defect"] = defect_counts.get("Uncategorized Defect", 0) + 1
 
+    defect_chart = [
+        {"name": name, "count": count}
+        for name, count in sorted(defect_counts.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+    # Latest seven calendar days in chronological order
+    trend_7_days = []
+    recent_completed = [r for r in recent_records if is_verified_completed(r)]
     for offset in range(6, -1, -1):
-        day_start = start_today - timedelta(days=offset)
+        day_start = start_of_today_local - timedelta(days=offset)
         day_end = day_start + timedelta(days=1)
 
         day_records = [
-            record
-            for record in recent_inspections
-            if record.created_at
-            and day_start <= record.created_at < day_end
+            r for r in recent_completed
+            if day_start <= to_local_datetime(r.created_at, sys_tz) < day_end
         ]
 
+        d_stats = compute_daily_stats(day_records)
+
         trend_7_days.append({
-            "day": day_start.strftime("%a"),
-            "passRate": calculate_yield(day_records),
-            "avgTime": calculate_average(
-                day_records,
-                "inspection_time",
-            ),
+            "day": day_start.strftime("%b %d"),
+            "date": day_start.strftime("%b %d"),
+            "fullDate": day_start.strftime("%Y-%m-%d"),
+            "weekday": day_start.strftime("%a"),
+            "passRate": d_stats["passRate"],
+            "avgTime": d_stats["avgCycleTime"],
+            "inspected": d_stats["inspected"],
+            "pass": d_stats["pass"],
+            "fail": d_stats["fail"],
+            "hasData": d_stats["inspected"] > 0,
         })
 
-    # ---------------------------------------------------------
-    # Response
-    # ---------------------------------------------------------
-    return {
-        "kpis": [
-            {
-                "label": "Yield Rate",
-                "value": today_yield,
-                "suffix": "%",
-                "decimals": 1,
-                "trend": f"{yield_change:+.1f}%",
-                "up": yield_change >= 0,
-            },
-            {
-                "label": "Today's Defects",
-                "value": today_defects,
-                "suffix": "",
-                "decimals": 0,
-                "trend": f"{defect_change:+.1f}%",
-                "up": defect_change <= 0,
-            },
-            {
-                "label": "Avg Confidence",
-                "value": today_confidence,
-                "suffix": "%",
-                "decimals": 1,
-                "trend": f"{confidence_change:+.1f}%",
-                "up": confidence_change >= 0,
-            },
-            {
-                "label": "Inspection Time",
-                "value": today_cycle_time,
-                "suffix": "s",
-                "decimals": 2,
-                "trend": f"{cycle_change:+.2f}s",
-                "up": cycle_change <= 0,
-            },
-        ],
-        "qualitySummary": [
+    # Optional process-time limit (only if configured via environment)
+    process_limit_env = os.getenv("PROCESS_TIME_LIMIT_SECONDS")
+    try:
+        process_limit = float(process_limit_env) if process_limit_env else None
+    except ValueError:
+        process_limit = None
+
+    if today_stats["inspected"] > 0:
+        quality_summary = [
             {
                 "name": "PASS RATE",
-                "value": today_yield,
+                "value": today_stats["passRate"],
                 "color": "#00FF9C",
             },
             {
                 "name": "DEFECT RATE",
-                "value": round(100 - today_yield, 1),
+                "value": round(100.0 - today_stats["passRate"], 1),
                 "color": "#FF4D6D",
             },
+        ]
+        yield_rate_val = today_stats["passRate"]
+    else:
+        quality_summary = []
+        yield_rate_val = None
+
+    donut_stats = [
+        {
+            "label": "Today's Target",
+            "value": 95.0,
+        },
+        {
+            "label": "Yesterday's Yield",
+            "value": yesterday_stats["passRate"],
+        },
+        {
+            "label": "Daily Improvement",
+            "value": round(today_stats["passRate"] - yesterday_stats["passRate"], 1)
+                     if (today_stats["passRate"] is not None and yesterday_stats["passRate"] is not None)
+                     else None,
+            "up": (today_stats["passRate"] >= yesterday_stats["passRate"])
+                  if (today_stats["passRate"] is not None and yesterday_stats["passRate"] is not None)
+                  else True,
+        },
+    ]
+
+    return {
+        "kpis": [
+            {
+                "label": "Yield Rate",
+                "value": today_stats["passRate"],
+                "suffix": "%" if today_stats["passRate"] is not None else "",
+                "decimals": 1,
+                "trend": trends["passRateTrend"],
+                "up": trends["passRateUp"],
+            },
+            {
+                "label": "Today's Defects",
+                "value": today_stats["defects"],
+                "suffix": "",
+                "decimals": 0,
+                "trend": trends["defectsTrend"],
+                "up": trends["defectsUp"],
+            },
+            {
+                "label": "Avg Confidence",
+                "value": today_stats["avgConfidence"],
+                "suffix": "%" if today_stats["avgConfidence"] is not None else "",
+                "decimals": 1,
+                "trend": trends["confidenceTrend"],
+                "up": trends["confidenceUp"],
+            },
+            {
+                "label": "Inspection Time",
+                "value": today_stats["avgCycleTime"],
+                "suffix": "s" if today_stats["avgCycleTime"] is not None else "",
+                "decimals": 2,
+                "trend": trends["cycleTimeTrend"],
+                "up": trends["cycleTimeUp"],
+            },
         ],
-        "donutStats": [
-            {
-                "label": "Today's Target",
-                "value": 95.0,
-            },
-            {
-                "label": "Yesterday's Yield",
-                "value": yesterday_yield,
-            },
-            {
-                "label": "Daily Improvement",
-                "value": abs(yield_change),
-                "up": yield_change >= 0,
-            },
-        ],
-        "yieldRate": today_yield,
+        "qualitySummary": quality_summary,
+        "donutStats": donut_stats,
+        "yieldRate": yield_rate_val,
         "defectChart": defect_chart,
         "hourlyThroughput": hourly_throughput,
         "trend7Days": trend_7_days,
+        "processLimit": process_limit,
     }
 
 @app.get("/api/reports")
@@ -2333,90 +2427,73 @@ def get_latest_inspection(
     return inspection
 
 @app.get("/api/dashboard/stats")
+@app.get("/dashboard/stats")
 def get_dashboard_stats(
     db: Session = Depends(get_db)
 ):
-    now = datetime.now(timezone.utc)
+    sys_tz = get_system_timezone()
+    now_local = datetime.now(sys_tz)
 
-    start_of_today = now.replace(
+    start_of_today_local = now_local.replace(
         hour=0,
         minute=0,
         second=0,
         microsecond=0
     )
+    end_of_today_local = start_of_today_local + timedelta(days=1)
 
-    start_of_yesterday = start_of_today - timedelta(days=1)
+    start_of_yesterday_local = start_of_today_local - timedelta(days=1)
+    end_of_yesterday_local = start_of_today_local
 
-    today_inspections = (
+    start_yesterday_utc = start_of_yesterday_local.astimezone(timezone.utc)
+
+    # Fetch inspections since start of yesterday
+    inspections = (
         db.query(Inspection)
-        .filter(Inspection.created_at >= start_of_today)
+        .filter(Inspection.created_at >= start_yesterday_utc)
         .all()
     )
 
-    yesterday_inspections = (
-        db.query(Inspection)
-        .filter(
-            Inspection.created_at >= start_of_yesterday,
-            Inspection.created_at < start_of_today
-        )
-        .all()
-    )
+    today_records = [
+        r for r in inspections
+        if start_of_today_local <= to_local_datetime(r.created_at, sys_tz) < end_of_today_local
+    ]
+    yesterday_records = [
+        r for r in inspections
+        if start_of_yesterday_local <= to_local_datetime(r.created_at, sys_tz) < end_of_yesterday_local
+    ]
 
-    def calculate_stats(inspections):
-        passed = sum(
-            1 for inspection in inspections
-            if str(inspection.status).upper() == "PASS"
-        )
-
-        failed = sum(
-            1 for inspection in inspections
-            if str(inspection.status).upper() == "FAIL"
-        )
-
-        # Inspected = total completed inspections (PASS + FAIL)
-        inspected = passed + failed
-
-        pass_rate = (
-            round((passed / inspected) * 100, 1)
-            if inspected
-            else 0
-        )
-
-        completed_times = [
-            inspection.inspection_time
-            for inspection in inspections
-            if inspection.inspection_time is not None
-        ]
-
-        avg_cycle_time = (
-            round(
-                sum(completed_times) / len(completed_times),
-                2
-            )
-            if completed_times
-            else 0
-        )
-
-        return {
-            "inspected": inspected,
-            "pass": passed,
-            "fail": failed,
-            "passRate": pass_rate,
-            "avgCycleTime": avg_cycle_time,
-        }
-
-    today_stats = calculate_stats(today_inspections)
-    yesterday_stats = calculate_stats(yesterday_inspections)
+    today_stats = compute_daily_stats(today_records)
+    yesterday_stats = compute_daily_stats(yesterday_records)
+    trends = compute_comparison_trends(today_stats, yesterday_stats)
 
     return {
         "today": {
-            **today_stats,
+            "inspected": today_stats["inspected"],
+            "pass": today_stats["pass"],
+            "fail": today_stats["fail"],
+            "passRate": today_stats["passRate"],
+            "avgCycleTime": today_stats["avgCycleTime"],
+            "inspectedTrend": trends["inspectedTrend"],
+            "inspectedUp": trends["inspectedUp"],
+            "passRateTrend": trends["passRateTrend"],
+            "passRateUp": trends["passRateUp"],
+            "failTrend": trends["failTrend"],
+            "failUp": trends["failUp"],
+            "avgCycleTimeTrend": trends["cycleTimeTrend"],
+            "avgCycleTimeUp": trends["cycleTimeUp"],
             "systemUptime": "—",
             "rpiTemp": get_rpi_temperature(),
             "cpu": get_rpi_cpu_usage(),
             "fps": "—",
         },
-        "yesterday": yesterday_stats,
+        "yesterday": {
+            "inspected": yesterday_stats["inspected"],
+            "pass": yesterday_stats["pass"],
+            "fail": yesterday_stats["fail"],
+            "passRate": yesterday_stats["passRate"],
+            "avgCycleTime": yesterday_stats["avgCycleTime"],
+        },
     }
 
 @app.get("/api/camera/status")

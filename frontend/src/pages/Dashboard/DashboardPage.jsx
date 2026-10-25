@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import AppLayout from "../../components/layout/AppLayout";
@@ -28,6 +28,7 @@ import {
   Tooltip,
   Legend,
   LabelList,
+  ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
 import {
@@ -73,7 +74,7 @@ const itemVariants = {
   },
 };
 
-const sparklineData = TREND_7_DAYS.map((d) => ({ value: d.passRate }));
+const defaultSparklineData = TREND_7_DAYS.map((d) => ({ value: d.passRate }));
 
 const CAMERA_BADGE = {
   CONNECTED: {
@@ -173,13 +174,18 @@ function AnalyticsHourlyTooltip({ active, payload, label }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0]?.payload;
   if (!d) return null;
-  const failed = d.inspected - d.pass;
-  const confidence = ((d.pass / d.inspected) * 100).toFixed(1);
+  const inspected = d.inspected || 0;
+  const passed = d.pass || 0;
+  const failed = inspected - passed;
+  const confidence = inspected > 0
+    ? (d.confidence != null ? `${d.confidence}%` : `${((passed / inspected) * 100).toFixed(1)}%`)
+    : "—";
+
   const rows = [
-    { label: "Inspected", value: d.inspected, color: ANALYTICS_C.info },
-    { label: "Passed", value: d.pass, color: ANALYTICS_C.pass },
+    { label: "Inspected", value: inspected, color: ANALYTICS_C.info },
+    { label: "Passed", value: passed, color: ANALYTICS_C.pass },
     { label: "Failed", value: failed, color: ANALYTICS_C.crit },
-    { label: "Confidence", value: `${confidence}%`, color: ANALYTICS_C.xai },
+    { label: "Confidence", value: confidence, color: ANALYTICS_C.xai },
   ];
   return (
     <div
@@ -196,7 +202,7 @@ function AnalyticsHourlyTooltip({ active, payload, label }) {
         className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.2em]"
         style={{ color: "#7ce7ac" }}
       >
-        {label} Shift
+        {label} Shift Window
       </p>
       <div className="space-y-1">
         {rows.map((r) => (
@@ -204,12 +210,100 @@ function AnalyticsHourlyTooltip({ active, payload, label }) {
             key={r.label}
             className="flex items-center justify-between gap-6 text-[10px]"
           >
-            <span className="text-slate-200">{r.label}</span>
+            <span className="text-slate-400">{r.label}</span>
             <span className="font-bold" style={{ color: r.color }}>
               {r.value}
             </span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function YieldTrendTooltip({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  return (
+    <div
+      className="tooltip-pop pointer-events-none rounded-xl border px-4 py-2.5 font-mono"
+      style={{
+        background: ANALYTICS_C.tooltipBg,
+        border: `1px solid ${ANALYTICS_C.glow}`,
+        borderRadius: 12,
+        boxShadow:
+          "0 0 24px rgba(31,227,138,0.12), 0 12px 32px rgba(0,0,0,0.5)",
+      }}
+    >
+      <p
+        className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.2em]"
+        style={{ color: "#7ce7ac" }}
+      >
+        {d.fullDate || d.date || label} {d.weekday ? `(${d.weekday})` : ""}
+      </p>
+      <div className="space-y-1 text-[10px]">
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-slate-400">Completed Inspections:</span>
+          <span className="font-bold text-white">{d.inspected ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-slate-400">Passed Units:</span>
+          <span className="font-bold text-success">{d.pass ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-slate-400">Failed Units:</span>
+          <span className="font-bold text-danger">{d.fail ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-6 pt-1 border-t border-accent/10">
+          <span className="text-slate-200">Pass Yield:</span>
+          <span className="font-bold text-accent">
+            {d.passRate != null ? `${d.passRate}%` : "No completed inspections"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CycleTimeTooltip({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  return (
+    <div
+      className="tooltip-pop pointer-events-none rounded-xl border px-4 py-2.5 font-mono"
+      style={{
+        background: ANALYTICS_C.tooltipBg,
+        border: `1px solid ${ANALYTICS_C.glow}`,
+        borderRadius: 12,
+        boxShadow:
+          "0 0 24px rgba(31,227,138,0.12), 0 12px 32px rgba(0,0,0,0.5)",
+      }}
+    >
+      <p
+        className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.2em]"
+        style={{ color: "#7ce7ac" }}
+      >
+        {d.fullDate || d.date || label} {d.weekday ? `(${d.weekday})` : ""}
+      </p>
+      <div className="space-y-1 text-[10px]">
+        <div className="flex items-center justify-between gap-6">
+          <span className="text-slate-400">Completed Inspections:</span>
+          <span className="font-bold text-white">{d.inspected ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between gap-6 pt-1 border-t border-accent/10">
+          <span className="text-slate-200">Avg Duration:</span>
+          <span className="font-bold text-cyan-400">
+            {d.avgTime != null ? `${d.avgTime}s` : "No valid duration data"}
+          </span>
+        </div>
+        {d.processLimit != null && (
+          <div className="flex items-center justify-between gap-6">
+            <span className="text-slate-400">Process Limit:</span>
+            <span className="font-bold text-warning">{d.processLimit}s</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -301,19 +395,25 @@ function AnalyticsMiniKpi({
       </div>
       <div className="mt-1.5 flex items-baseline gap-1">
         <span className={`font-mono text-2xl font-extrabold ${valueClass}`}>
-          {decimals ? value.toFixed(decimals) : value}
+          {value == null ? "—" : decimals ? value.toFixed(decimals) : value}
         </span>
-        {suffix && (
+        {suffix && value != null && (
           <span className="text-xs font-bold text-slate-400">{suffix}</span>
         )}
       </div>
       <div className="mt-1.5 flex items-center gap-1.5">
-        <span
-          className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold ${up ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
-        >
-          {up ? "▲" : "▼"} {trend}
-        </span>
-        <span className="font-mono text-[9px] text-slate-600">vs yesterday</span>
+        {trend && trend !== "—" ? (
+          <>
+            <span
+              className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold ${up ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+            >
+              {up ? "▲" : "▼"} {trend}
+            </span>
+            <span className="font-mono text-[9px] text-slate-500">vs yesterday</span>
+          </>
+        ) : (
+          <span className="font-mono text-[9px] text-slate-500">No comparison data</span>
+        )}
       </div>
     </motion.div>
   );
@@ -384,6 +484,15 @@ export default function DashboardPage() {
     loading: analyticsLoading,
     error: analyticsError,
   } = useAnalytics();
+
+  const dynamicSparklineData = useMemo(() => {
+    if (analyticsData?.trend7Days?.length) {
+      return analyticsData.trend7Days.map((d) => ({
+        value: d.passRate != null ? d.passRate : 0,
+      }));
+    }
+    return defaultSparklineData;
+  }, [analyticsData]);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showNotifications, setShowNotifications] = useState(false);
@@ -869,8 +978,8 @@ export default function DashboardPage() {
                 title: "Boards Inspected Today",
                 value: stats.today.inspected,
                 icon: Camera,
-                trend: "+1.8%",
-                up: true,
+                trend: stats.today.inspectedTrend || "—",
+                up: stats.today.inspectedUp ?? true,
                 sparkColor: "#32d583",
               },
               {
@@ -878,16 +987,16 @@ export default function DashboardPage() {
                 value: stats.today.passRate,
                 suffix: "%",
                 icon: CheckCircle,
-                trend: "+2.1%",
-                up: true,
+                trend: stats.today.passRateTrend || "—",
+                up: stats.today.passRateUp ?? true,
                 sparkColor: "#32d583",
               },
               {
                 title: "Failed Boards",
                 value: stats.today.fail,
                 icon: AlertTriangle,
-                trend: "-4.2%",
-                up: false,
+                trend: stats.today.failTrend || "—",
+                up: stats.today.failUp ?? false,
                 sparkColor: "#ff4d6d",
               },
               {
@@ -896,8 +1005,8 @@ export default function DashboardPage() {
                 decimals: 2,
                 suffix: "s",
                 icon: Clock,
-                trend: "-1.5%",
-                up: true,
+                trend: stats.today.avgCycleTimeTrend || "—",
+                up: stats.today.avgCycleTimeUp ?? true,
                 sparkColor: "#32d583",
               },
             ].map((card) => (
@@ -912,11 +1021,13 @@ export default function DashboardPage() {
                     </span>
                     <div className="flex items-baseline gap-1">
                       <span className="font-mono text-3xl font-extrabold text-white">
-                        {card.decimals
+                        {card.value == null
+                          ? "—"
+                          : card.decimals
                           ? card.value.toFixed(card.decimals)
                           : card.value}
                       </span>
-                      {card.suffix && (
+                      {card.suffix && card.value != null && (
                         <span className="text-sm font-semibold text-accent">
                           {card.suffix}
                         </span>
@@ -928,14 +1039,22 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between border-t border-accent/5 pt-3">
-                  <span
-                    className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-bold ${card.up ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
-                  >
-                    {card.up ? "↑" : "↓"} {card.trend}
-                  </span>
+                  {card.trend && card.trend !== "—" ? (
+                    <span
+                      className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-bold ${
+                        card.up ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+                      }`}
+                    >
+                      {card.up ? "↑" : "↓"} {card.trend}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-white/5 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-slate-400">
+                      —
+                    </span>
+                  )}
                   <div className="h-6 w-12">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={sparklineData}>
+                      <AreaChart data={dynamicSparklineData}>
                         <Area
                           type="monotone"
                           dataKey="value"
@@ -1073,7 +1192,17 @@ export default function DashboardPage() {
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
-                              data={qualitySummary}
+                              data={
+                                qualitySummary.some((q) => (q.value || 0) > 0)
+                                  ? qualitySummary
+                                  : [
+                                      {
+                                        name: "No Data",
+                                        value: 100,
+                                        color: "rgba(255,255,255,0.06)",
+                                      },
+                                    ]
+                              }
                               cx="50%"
                               cy="50%"
                               innerRadius={52}
@@ -1085,23 +1214,36 @@ export default function DashboardPage() {
                               animationDuration={850}
                               animationEasing="ease-out"
                             >
-                              {qualitySummary.map((entry, index) => (
+                              {(qualitySummary.some((q) => (q.value || 0) > 0)
+                                ? qualitySummary
+                                : [
+                                    {
+                                      name: "No Data",
+                                      value: 100,
+                                      color: "rgba(255,255,255,0.06)",
+                                    },
+                                  ]
+                              ).map((entry, index) => (
                                 <Cell
                                   key={`cell-${index}`}
                                   fill={entry.color}
                                 />
                               ))}
                             </Pie>
-                            <Tooltip
-                              content={<AnalyticsTooltip suffix="%" />}
-                              cursor={false}
-                            />
+                            {qualitySummary.some((q) => (q.value || 0) > 0) && (
+                              <Tooltip
+                                content={<AnalyticsTooltip suffix="%" />}
+                                cursor={false}
+                              />
+                            )}
                           </PieChart>
                         </ResponsiveContainer>
                         <div className="absolute flex flex-col items-center">
                           <span className="font-mono text-xl font-extrabold text-white">
-                            {yieldRate}
-                            <span className="text-success">%</span>
+                            {yieldRate != null ? yieldRate : "—"}
+                            {yieldRate != null && (
+                              <span className="text-success">%</span>
+                            )}
                           </span>
                           <span className="font-display text-[8px] uppercase tracking-widest text-slate-500">
                             Yield Rate
@@ -1238,7 +1380,7 @@ export default function DashboardPage() {
 
                     {/* Area Chart: Hourly Throughput */}
                     <GlassCard
-                      className="flex h-[350px] flex-col justify-between md:col-span-2 lg:col-span-12"
+                      className="relative flex h-[350px] flex-col justify-between overflow-hidden md:col-span-2 lg:col-span-12"
                       hoverLift={false}
                     >
                       <div className="flex items-center justify-between border-b border-accent/5 pb-3 text-left">
@@ -1248,12 +1390,29 @@ export default function DashboardPage() {
                             Shift Throughput Activity
                           </span>
                         </div>
-                        <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">
-                          Scans / Hour
-                        </span>
+                        <div className="flex items-center gap-3">
+                          {!hourlyThroughput.some((h) => (h.inspected || 0) > 0) && (
+                            <span className="rounded-full border border-accent/20 bg-accent/10 px-2 py-0.5 font-mono text-[9px] font-semibold text-accent">
+                              0 Scans Completed Today
+                            </span>
+                          )}
+                          <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">
+                            Scans / Hour (24h)
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="mt-5 h-64 w-full">
+                      <div className="relative mt-5 h-64 w-full">
+                        {!hourlyThroughput.some((h) => (h.inspected || 0) > 0) && (
+                          <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-[#08140F]/50 backdrop-blur-[1px]">
+                            <span className="font-mono text-xs font-semibold text-slate-300">
+                              No inspection records completed today
+                            </span>
+                            <span className="mt-1 max-w-sm text-center font-mono text-[10px] text-slate-500">
+                              Activity will populate across the 24-hour timeline as inspections are completed.
+                            </span>
+                          </div>
+                        )}
                         <ResponsiveContainer width="100%" height="100%">
                           <AreaChart
                             data={hourlyThroughput}
@@ -1313,6 +1472,7 @@ export default function DashboardPage() {
                               fontSize={9}
                               fontFamily="JetBrains Mono"
                               tickLine={false}
+                              allowDecimals={false}
                             />
                             <Tooltip
                               content={<AnalyticsHourlyTooltip />}
@@ -1373,17 +1533,32 @@ export default function DashboardPage() {
 
                     {/* Line Chart: Weekly Pass Yield Trend */}
                     <GlassCard
-                      className="flex h-[320px] flex-col justify-between md:col-span-1 lg:col-span-6"
+                      className="relative flex h-[320px] flex-col justify-between overflow-hidden md:col-span-1 lg:col-span-6"
                       hoverLift={false}
                     >
-                      <div className="flex items-center gap-2 border-b border-accent/5 pb-3 text-left">
-                        <TrendingUp className="h-4 w-4 text-accent" />
-                        <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
-                          Weekly Pass Yield Trend
+                      <div className="flex items-center justify-between border-b border-accent/5 pb-3 text-left">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-accent" />
+                          <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
+                            Weekly Pass Yield Trend
+                          </span>
+                        </div>
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">
+                          Latest 7 Days
                         </span>
                       </div>
 
-                      <div className="mt-5 h-56 w-full">
+                      <div className="relative mt-5 h-56 w-full">
+                        {!trend7Days.some((d) => d.hasData && d.passRate != null) && (
+                          <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-[#08140F]/50 backdrop-blur-[1px]">
+                            <span className="font-mono text-xs font-semibold text-slate-300">
+                              No verified inspection data
+                            </span>
+                            <span className="mt-1 max-w-xs text-center font-mono text-[10px] text-slate-500">
+                              Pass yield trend requires verified completed PASS/FAIL records.
+                            </span>
+                          </div>
+                        )}
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart
                             data={trend7Days}
@@ -1394,7 +1569,7 @@ export default function DashboardPage() {
                               stroke="rgba(0,229,255,0.02)"
                             />
                             <XAxis
-                              dataKey="day"
+                              dataKey="date"
                               stroke="#64748b"
                               fontSize={9}
                               fontFamily="Orbitron"
@@ -1405,18 +1580,20 @@ export default function DashboardPage() {
                               fontSize={9}
                               fontFamily="JetBrains Mono"
                               tickLine={false}
-                              domain={[90, 100]}
+                              domain={[0, 100]}
+                              ticks={[0, 25, 50, 75, 100]}
                             />
                             <Tooltip
-                              content={<AnalyticsTooltip suffix="%" />}
+                              content={<YieldTrendTooltip />}
                               cursor={<AnalyticsGlowCursor />}
                             />
                             <Line
-                              name="Pass Rate"
+                              name="Pass Yield"
                               type="monotone"
                               dataKey="passRate"
                               stroke={ANALYTICS_C.pass}
                               strokeWidth={2}
+                              connectNulls={false}
                               isAnimationActive
                               animationBegin={200}
                               animationDuration={850}
@@ -1435,17 +1612,32 @@ export default function DashboardPage() {
 
                     {/* Line Chart: Cycle Time Process Limit */}
                     <GlassCard
-                      className="flex h-[320px] flex-col justify-between md:col-span-1 lg:col-span-6"
+                      className="relative flex h-[320px] flex-col justify-between overflow-hidden md:col-span-1 lg:col-span-6"
                       hoverLift={false}
                     >
-                      <div className="flex items-center gap-2 border-b border-accent/5 pb-3 text-left">
-                        <Clock className="h-4 w-4 text-accent" />
-                        <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
-                          Cycle Time Process Limit (7 Days)
+                      <div className="flex items-center justify-between border-b border-accent/5 pb-3 text-left">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-accent" />
+                          <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
+                            Cycle Time Process Limit (7 Days)
+                          </span>
+                        </div>
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">
+                          Latest 7 Days
                         </span>
                       </div>
 
-                      <div className="mt-5 h-56 w-full">
+                      <div className="relative mt-5 h-56 w-full">
+                        {!trend7Days.some((d) => d.avgTime != null) && (
+                          <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-[#08140F]/50 backdrop-blur-[1px]">
+                            <span className="font-mono text-xs font-semibold text-slate-300">
+                              No duration records available
+                            </span>
+                            <span className="mt-1 max-w-xs text-center font-mono text-[10px] text-slate-500">
+                              Cycle times are recorded from completed inspection runs.
+                            </span>
+                          </div>
+                        )}
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart
                             data={trend7Days}
@@ -1456,7 +1648,7 @@ export default function DashboardPage() {
                               stroke="rgba(0,229,255,0.02)"
                             />
                             <XAxis
-                              dataKey="day"
+                              dataKey="date"
                               stroke="#64748b"
                               fontSize={9}
                               fontFamily="Orbitron"
@@ -1467,17 +1659,33 @@ export default function DashboardPage() {
                               fontSize={9}
                               fontFamily="JetBrains Mono"
                               tickLine={false}
+                              domain={[0, "auto"]}
                             />
                             <Tooltip
-                              content={<AnalyticsTooltip suffix="s" />}
+                              content={<CycleTimeTooltip processLimit={analyticsData?.processLimit} />}
                               cursor={<AnalyticsGlowCursor />}
                             />
+                            {analyticsData?.processLimit != null && (
+                              <ReferenceLine
+                                y={analyticsData.processLimit}
+                                stroke="#ffb703"
+                                strokeDasharray="4 4"
+                                strokeWidth={1.5}
+                                label={{
+                                  value: `Limit (${analyticsData.processLimit}s)`,
+                                  fill: "#ffb703",
+                                  fontSize: 9,
+                                  position: "top",
+                                }}
+                              />
+                            )}
                             <Line
                               name="Avg Cycle Time"
                               type="monotone"
                               dataKey="avgTime"
                               stroke={ANALYTICS_C.info}
                               strokeWidth={2}
+                              connectNulls={false}
                               isAnimationActive
                               animationBegin={200}
                               animationDuration={850}

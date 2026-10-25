@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+﻿import { useState, useRef, useCallback, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import Button from "../../components/common/Button";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
@@ -18,6 +18,7 @@ import {
   Image,
   X,
   FileText,
+  Layers,
 } from "lucide-react";
 
 import InspectionImagePanel from "../../components/inspection/InspectionImagePanel";
@@ -26,6 +27,7 @@ import XMCCVResultsPanel from "../../components/inspection/XMCCVResultsPanel";
 import HeatmapPanel from "../../components/inspection/HeatmapPanel";
 import ODCResultsPanel from "../../components/inspection/ODCResultsPanel";
 import InspectionDecisionPanel from "../../components/inspection/InspectionDecisionPanel";
+import TemplateModePanel from "../../components/inspection/TemplateModePanel";
 
 const INSPECTION_STORAGE_KEY = "pcbvision:lastSuccessfulInspection";
 
@@ -42,10 +44,7 @@ function loadSavedInspection() {
 
 function saveInspectionResult(inspection) {
   try {
-    sessionStorage.setItem(
-      INSPECTION_STORAGE_KEY,
-      JSON.stringify(inspection)
-    );
+    sessionStorage.setItem(INSPECTION_STORAGE_KEY, JSON.stringify(inspection));
   } catch (error) {
     console.error("Unable to save inspection result:", error);
   }
@@ -55,9 +54,7 @@ function normalizeInspectionResponse(response) {
   const result = response?.data ?? response ?? {};
   const raw = result?.inspection ?? {};
 
-  const rawDetections = Array.isArray(raw.detections)
-    ? raw.detections
-    : [];
+  const rawDetections = Array.isArray(raw.detections) ? raw.detections : [];
 
   const images = result?.images ?? {};
   const database = result?.database ?? {};
@@ -74,10 +71,7 @@ function normalizeInspectionResponse(response) {
       `Detection ${index + 1}`;
 
     const confidence =
-      det?.confidence ??
-      det?.yolo_confidence ??
-      det?.yoloConfidence ??
-      null;
+      det?.confidence ?? det?.yolo_confidence ?? det?.yoloConfidence ?? null;
 
     return {
       ...det,
@@ -98,44 +92,29 @@ function normalizeInspectionResponse(response) {
 
         x2:
           bbox.x2 ??
-          (
-            bbox.left != null && bbox.width != null
-              ? bbox.left + bbox.width
-              : undefined
-          ),
+          (bbox.left != null && bbox.width != null
+            ? bbox.left + bbox.width
+            : undefined),
 
         y2:
           bbox.y2 ??
-          (
-            bbox.top != null && bbox.height != null
-              ? bbox.top + bbox.height
-              : undefined
-          ),
+          (bbox.top != null && bbox.height != null
+            ? bbox.top + bbox.height
+            : undefined),
 
         left: bbox.left ?? bbox.x1,
         top: bbox.top ?? bbox.y1,
 
         width:
           bbox.width ??
-          (
-            bbox.x2 != null && bbox.x1 != null
-              ? bbox.x2 - bbox.x1
-              : undefined
-          ),
+          (bbox.x2 != null && bbox.x1 != null ? bbox.x2 - bbox.x1 : undefined),
 
         height:
           bbox.height ??
-          (
-            bbox.y2 != null && bbox.y1 != null
-              ? bbox.y2 - bbox.y1
-              : undefined
-          ),
+          (bbox.y2 != null && bbox.y1 != null ? bbox.y2 - bbox.y1 : undefined),
       },
 
-      ocr_text:
-        det?.ocr_text ??
-        det?.ocrText ??
-        "",
+      ocr_text: det?.ocr_text ?? det?.ocrText ?? "",
     };
   });
 
@@ -148,11 +127,9 @@ function normalizeInspectionResponse(response) {
     raw?.yoloConfidence ??
     database?.confidence ??
     database?.yolo_confidence ??
-    (
-      detectionConfidences.length > 0
-        ? Math.max(...detectionConfidences)
-        : null
-    );
+    (detectionConfidences.length > 0
+      ? Math.max(...detectionConfidences)
+      : null);
 
   const inspectionTime =
     raw?.inspection_time ??
@@ -166,10 +143,7 @@ function normalizeInspectionResponse(response) {
     null;
 
   const inputImageUrl =
-    images?.input ??
-    raw?.image_url ??
-    raw?.imageUrl ??
-    null;
+    images?.input ?? raw?.image_url ?? raw?.imageUrl ?? null;
 
   const detectionImageUrl =
     images?.detection ??
@@ -177,36 +151,21 @@ function normalizeInspectionResponse(response) {
     raw?.detectionImageUrl ??
     null;
 
-  const heatmapImageUrl =
-    images?.heatmap ??
-    null;
+  const heatmapImageUrl = images?.heatmap ?? null;
 
-  const overlayImageUrl =
-    images?.overlay ??
-    null;
+  const overlayImageUrl = images?.overlay ?? null;
 
   const xai = {
     ...rawXai,
 
-    heatmap_path:
-      heatmapImageUrl ??
-      rawXai?.heatmap_path ??
-      null,
+    heatmap_path: heatmapImageUrl ?? rawXai?.heatmap_path ?? null,
 
-    overlay_path:
-      overlayImageUrl ??
-      rawXai?.overlay_path ??
-      null,
+    overlay_path: overlayImageUrl ?? rawXai?.overlay_path ?? null,
 
-    processing_time:
-      rawXai?.processing_time ??
-      rawXai?.processingTime ??
-      null,
+    processing_time: rawXai?.processing_time ?? rawXai?.processingTime ?? null,
   };
 
-  const xmccv = Array.isArray(raw?.xmccv)
-    ? raw.xmccv
-    : [];
+  const xmccv = Array.isArray(raw?.xmccv) ? raw.xmccv : [];
 
   const decision = {
     ...rawDecision,
@@ -217,10 +176,7 @@ function normalizeInspectionResponse(response) {
       raw?.status ??
       "FAIL",
 
-    reason:
-      rawDecision?.reason ??
-      rawDecision?.rationale ??
-      "",
+    reason: rawDecision?.reason ?? rawDecision?.rationale ?? "",
   };
 
   const boardId =
@@ -231,16 +187,10 @@ function normalizeInspectionResponse(response) {
     null;
 
   const inspectionId =
-    raw?.inspection_id ??
-    raw?.inspectionId ??
-    database?.inspection_id ??
-    null;
+    raw?.inspection_id ?? raw?.inspectionId ?? database?.inspection_id ?? null;
 
   const status = String(
-    decision?.overall_status ??
-    raw?.status ??
-    result?.status ??
-    "FAIL"
+    decision?.overall_status ?? raw?.status ?? result?.status ?? "FAIL",
   ).toUpperCase();
 
   return {
@@ -312,11 +262,11 @@ function normalizeInspectionResponse(response) {
   };
 }
 
-
 export default function LiveInspectionPage() {
   const { cameraStatus } = useCameraStatus();
   const { generating, generateReport, errorMessage: reportError } = useReport();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // If navigated from Dashboard "Test with PCB Image" button, default to upload mode
   const initialMode = location.state?.mode === "upload" ? "upload" : "camera";
@@ -328,6 +278,10 @@ export default function LiveInspectionPage() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [inspection, setInspection] = useState(loadSavedInspection);
   const [selectedDetection, setSelectedDetection] = useState(null);
+
+  // Template mode state
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [templateInspectionMethod, setTemplateInspectionMethod] = useState("");
 
   // Upload mode state
   const [uploadFile, setUploadFile] = useState(null);
@@ -355,7 +309,7 @@ export default function LiveInspectionPage() {
       const file = e.dataTransfer.files?.[0];
       if (file) handleFileSelect(file);
     },
-    [handleFileSelect]
+    [handleFileSelect],
   );
 
   const handleUploadInspection = async () => {
@@ -366,9 +320,14 @@ export default function LiveInspectionPage() {
     setNotice("Uploading PCB image for inspection...");
     try {
       sessionStorage.removeItem(INSPECTION_STORAGE_KEY);
-      const result = await uploadApi.inspectUploadedImage(uploadFile);
+      const result = await uploadApi.inspectUploadedImage(
+          uploadFile,
+          inspectionMode === "template" ? selectedTemplate : null
+        );
       if (!result || result.status !== "success") {
-        throw new Error(result?.message || result?.detail || "Upload inspection failed.");
+        throw new Error(
+          result?.message || result?.detail || "Upload inspection failed.",
+        );
       }
       const normalizedInspection = normalizeInspectionResponse(result);
       saveInspectionResult(normalizedInspection);
@@ -383,7 +342,11 @@ export default function LiveInspectionPage() {
         "Upload inspection failed. Check the backend logs.";
       if (typeof detail === "string") message = detail;
       else if (Array.isArray(detail))
-        message = detail.map((item) => (typeof item === "string" ? item : item?.msg || JSON.stringify(item))).join("; ");
+        message = detail
+          .map((item) =>
+            typeof item === "string" ? item : item?.msg || JSON.stringify(item),
+          )
+          .join("; ");
       setNotice(message);
     } finally {
       setIsUploading(false);
@@ -393,6 +356,28 @@ export default function LiveInspectionPage() {
   const handleStartInspection = async () => {
     if (isCapturing) return;
 
+    if (inspectionMode === "template") {
+      if (!selectedTemplate) {
+        setNotice("Please select a saved template before starting inspection.");
+        return;
+      }
+
+      if (!templateInspectionMethod) {
+        setNotice("Please choose Camera Inspection or Upload Image.");
+        return;
+      }
+
+      if (templateInspectionMethod === "upload") {
+        setNotice("Select an image and use the upload inspection action.");
+        return;
+      }
+
+      if (!cameraConnected) {
+        setNotice("Camera is not connected. Cannot run template inspection.");
+        return;
+      }
+    }
+
     setInspection(null);
     setSelectedDetection(null);
     setNotice("Running inspection on Raspberry Pi...");
@@ -401,45 +386,34 @@ export default function LiveInspectionPage() {
     try {
       sessionStorage.removeItem(INSPECTION_STORAGE_KEY);
 
-      /*
-       * DO NOT use browser camera capture here.
-       *
-       * Raspberry Pi /inspection/run owns the complete
-       * physical camera inspection workflow.
-       */
-      const response = await apiClient.post(
-        "/inspection/run",
-        {},
-      );
+      const payload =
+        inspectionMode === "template" && selectedTemplate
+          ? {
+              template_id:
+                selectedTemplate.id ??
+                selectedTemplate.template_id ??
+                selectedTemplate.name ??
+                selectedTemplate.template_name,
+            }
+          : {};
 
+      const response = await apiClient.post("/inspection/run", payload);
       const result = response?.data;
 
       if (!result || result.status !== "success") {
         throw new Error(
-          result?.message ||
-          result?.detail ||
-          "Inspection failed."
+          result?.message || result?.detail || "Inspection failed.",
         );
       }
 
-      const normalizedInspection =
-      normalizeInspectionResponse(result);
-
-    // Persist the exact normalized inspection response.
-    // No ML processing or decision logic is changed.
-    saveInspectionResult(normalizedInspection);
-    setInspection(normalizedInspection);
-
-    setNotice("Inspection completed.");
+      const normalizedInspection = normalizeInspectionResponse(result);
+      saveInspectionResult(normalizedInspection);
+      setInspection(normalizedInspection);
+      setNotice("Inspection completed.");
     } catch (error) {
-      console.error(
-        "PCB inspection failed:",
-        error
-      );
+      console.error("PCB inspection failed:", error);
 
-      const detail =
-        error?.response?.data?.detail;
-
+      const detail = error?.response?.data?.detail;
       let message =
         error?.response?.data?.message ||
         error?.message ||
@@ -450,10 +424,7 @@ export default function LiveInspectionPage() {
       } else if (Array.isArray(detail)) {
         message = detail
           .map((item) =>
-            typeof item === "string"
-              ? item
-              : item?.msg ||
-                JSON.stringify(item)
+            typeof item === "string" ? item : item?.msg || JSON.stringify(item),
           )
           .join("; ");
       }
@@ -466,31 +437,20 @@ export default function LiveInspectionPage() {
 
   const handleDetectionClick = (detection) => {
     setSelectedDetection(
-      selectedDetection?.id === detection?.id
-        ? null
-        : detection
+      selectedDetection?.id === detection?.id ? null : detection,
     );
   };
 
-  const status =
-    String(
-      inspection?.status || ""
-    ).toUpperCase();
+  const status = String(inspection?.status || "").toUpperCase();
 
   const isPass = status === "PASS";
   const isFail = status === "FAIL";
 
-  const isNotPcb =
-    inspection?.isPcb === false ||
-    status === "NOT_PCB";
+  const isNotPcb = inspection?.isPcb === false || status === "NOT_PCB";
 
-  const xai =
-    inspection?.xai || {};
+  const xai = inspection?.xai || {};
 
-  const xaiVisualUrl =
-    xai?.overlay_path ||
-    xai?.heatmap_path ||
-    null;
+  const xaiVisualUrl = xai?.overlay_path || xai?.heatmap_path || null;
 
   /*
    * MAIN VIEW:
@@ -509,15 +469,12 @@ export default function LiveInspectionPage() {
   const isInspected = Boolean(inspection);
 
   const scanning = isCapturing;
-  const scanPhase = isCapturing
-    ? "horizontal"
-    : "idle";
+  const scanPhase = isCapturing ? "horizontal" : "idle";
 
   return (
     <AppLayout>
       <main className="flex-1 p-4 md:p-6 space-y-4 max-w-[1600px] w-full">
-
-        {/* ── Page Header ── */}
+        {/* â”€â”€ Page Header â”€â”€ */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-accent/10 pb-3">
           <div>
             <h1 className="font-display text-lg md:text-xl font-bold text-white uppercase tracking-wider">
@@ -532,7 +489,10 @@ export default function LiveInspectionPage() {
             {/* Mode Toggle */}
             <div className="flex items-center rounded-lg border border-accent/10 bg-[#050816] p-0.5">
               <button
-                onClick={() => { setInspectionMode("camera"); setNotice(""); }}
+                onClick={() => {
+                  setInspectionMode("camera");
+                  setNotice("");
+                }}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all ${
                   inspectionMode === "camera"
                     ? "bg-accent/15 text-accent border border-accent/30"
@@ -543,7 +503,10 @@ export default function LiveInspectionPage() {
                 Camera
               </button>
               <button
-                onClick={() => { setInspectionMode("upload"); setNotice(""); }}
+                onClick={() => {
+                  setInspectionMode("upload");
+                  setNotice("");
+                }}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all ${
                   inspectionMode === "upload"
                     ? "bg-accent/15 text-accent border border-accent/30"
@@ -552,6 +515,20 @@ export default function LiveInspectionPage() {
               >
                 <Upload className="h-3 w-3" />
                 Upload
+              </button>
+              <button
+                onClick={() => {
+                  setInspectionMode("template");
+                  setNotice("");
+                }}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all ${
+                  inspectionMode === "template"
+                    ? "bg-accent/15 text-accent border border-accent/30"
+                    : "text-slate-500 hover:text-white"
+                }`}
+              >
+                <Layers className="h-3 w-3" />
+                Template
               </button>
             </div>
 
@@ -563,14 +540,14 @@ export default function LiveInspectionPage() {
               }`}
             >
               <Activity className="w-3.5 h-3.5" />
-              Camera:{" "}{cameraConnected ? "Connected" : "Disconnected"}
+              Camera: {cameraConnected ? "Connected" : "Disconnected"}
             </div>
 
             {inspection && (
               <div className="flex items-center gap-2 px-3 py-1 rounded-md border border-accent/15 bg-[#050816] font-mono text-[9px]">
                 <span className="text-slate-400">Inspection ID:</span>
                 <span className="text-white font-bold">
-                  {inspection.inspection_id || inspection.inspectionId || "—"}
+                  {inspection.inspection_id || inspection.inspectionId || "â€”"}
                 </span>
               </div>
             )}
@@ -585,9 +562,13 @@ export default function LiveInspectionPage() {
                       : "border-warning/30 bg-warning/10 text-warning"
                 }`}
               >
-                {isPass ? <CheckCircle className="h-3.5 w-3.5" />
-                  : isFail ? <XCircle className="h-3.5 w-3.5" />
-                  : <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {isPass ? (
+                  <CheckCircle className="h-3.5 w-3.5" />
+                ) : isFail ? (
+                  <XCircle className="h-3.5 w-3.5" />
+                ) : (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                )}
                 {inspection.status || "PROCESSING"}
               </span>
             )}
@@ -621,15 +602,110 @@ export default function LiveInspectionPage() {
                 onClick={handleStartInspection}
                 disabled={!cameraConnected || isCapturing}
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isCapturing ? "animate-spin" : ""}`} />
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${isCapturing ? "animate-spin" : ""}`}
+                />
+                {isCapturing ? "INSPECTING..." : "START INSPECTION"}
+              </Button>
+            )}
+
+            {inspectionMode === "template" && (
+              <Button
+                variant="secondary"
+                className="flex items-center gap-1.5 py-1 px-2.5"
+                onClick={handleStartInspection}
+                disabled={!cameraConnected || !selectedTemplate || isCapturing}
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${isCapturing ? "animate-spin" : ""}`}
+                />
                 {isCapturing ? "INSPECTING..." : "START INSPECTION"}
               </Button>
             )}
           </div>
         </div>
 
-        {/* ── Upload Mode Panel ── */}
-        {inspectionMode === "upload" && (
+        {/* â”€â”€ Template Mode Panel â”€â”€ */}
+        {inspectionMode === "template" && (
+          <div className="space-y-4">
+            <TemplateModePanel
+              selectedTemplate={selectedTemplate}
+              onTemplateSelect={(template) => {
+                setSelectedTemplate(template);
+                setTemplateInspectionMethod("");
+                setNotice("");
+              }}
+              onNavigateToCreate={() => navigate("/dashboard")}
+            />
+
+            {selectedTemplate && (
+              <div className="rounded-xl border border-accent/20 bg-[#08140F]/60 p-5 space-y-4">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-slate-200">
+                  Choose Inspection Method
+                </h3>
+
+                <p className="text-sm text-slate-400">
+                  How would you like to inspect this PCB against the selected
+                  template?
+                </p>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTemplateInspectionMethod("camera");
+                      setNotice("");
+                    }}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      templateInspectionMethod === "camera"
+                        ? "border-accent bg-accent/10"
+                        : "border-white/10 hover:border-accent/40"
+                    }`}
+                  >
+                    <Camera className="mb-2 h-5 w-5 text-accent" />
+                    <span className="block font-semibold text-white">
+                      Camera Inspection
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-400">
+                      Capture the PCB using the connected camera.
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTemplateInspectionMethod("upload");
+                      setNotice("");
+                    }}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      templateInspectionMethod === "upload"
+                        ? "border-accent bg-accent/10"
+                        : "border-white/10 hover:border-accent/40"
+                    }`}
+                  >
+                    <Upload className="mb-2 h-5 w-5 text-accent" />
+                    <span className="block font-semibold text-white">
+                      Upload Image
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-400">
+                      Choose a PCB image to compare with this template.
+                    </span>
+                  </button>
+                </div>
+
+                {templateInspectionMethod === "upload" && (
+                  <p className="text-sm text-amber-300">
+                    Select an image in the upload panel below. The selected
+                    template must be used for the comparison.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* â”€â”€ Upload Mode Panel â”€â”€ */}
+        {(inspectionMode === "upload" || (inspectionMode === "template" && templateInspectionMethod === "upload")) && (
           <div className="rounded-xl border border-accent/10 bg-[#08140F]/60 p-5 space-y-4">
             <div className="flex items-center gap-2 border-b border-accent/5 pb-3">
               <Upload className="h-4 w-4 text-accent" />
@@ -640,7 +716,10 @@ export default function LiveInspectionPage() {
 
             {/* Drop Zone */}
             <div
-              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
@@ -668,9 +747,16 @@ export default function LiveInspectionPage() {
                       className="max-h-48 rounded-lg object-contain border border-accent/10"
                     />
                   )}
-                  <p className="font-mono text-[10px] text-success">{uploadFile.name}</p>
+                  <p className="font-mono text-[10px] text-success">
+                    {uploadFile.name}
+                  </p>
                   <button
-                    onClick={(e) => { e.stopPropagation(); setUploadFile(null); setUploadPreview(null); setNotice(""); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setUploadFile(null);
+                      setUploadPreview(null);
+                      setNotice("");
+                    }}
                     className="absolute right-3 top-3 text-slate-500 hover:text-white"
                   >
                     <X className="h-4 w-4" />
@@ -682,7 +768,9 @@ export default function LiveInspectionPage() {
                   <p className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
                     Drag &amp; drop a PCB image, or click to browse
                   </p>
-                  <p className="font-mono text-[9px] text-slate-600">JPG, PNG, BMP, WEBP supported</p>
+                  <p className="font-mono text-[9px] text-slate-600">
+                    JPG, PNG, BMP, WEBP supported
+                  </p>
                 </>
               )}
             </div>
@@ -696,9 +784,14 @@ export default function LiveInspectionPage() {
                   disabled={isUploading}
                 >
                   {isUploading ? (
-                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Inspecting...</>
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />{" "}
+                      Inspecting...
+                    </>
                   ) : (
-                    <><Upload className="h-3.5 w-3.5" /> Run Inspection</>  
+                    <>
+                      <Upload className="h-3.5 w-3.5" /> Run Inspection
+                    </>
                   )}
                 </Button>
               </div>
@@ -719,18 +812,13 @@ export default function LiveInspectionPage() {
             }`}
           >
             <p className="font-mono text-[10px] text-slate-300 break-words flex items-center gap-2">
-
               {isCapturing && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
               )}
 
-              {isFail && (
-                <AlertTriangle className="w-3.5 h-3.5 text-danger" />
-              )}
+              {isFail && <AlertTriangle className="w-3.5 h-3.5 text-danger" />}
 
-              {isPass && (
-                <CheckCircle className="w-3.5 h-3.5 text-success" />
-              )}
+              {isPass && <CheckCircle className="w-3.5 h-3.5 text-success" />}
 
               {notice}
             </p>
@@ -747,7 +835,6 @@ export default function LiveInspectionPage() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)] xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.9fr)] gap-5 items-stretch">
-
           <InspectionImagePanel
             inspection={inspection}
             pcbImage={pcbImage}
@@ -772,18 +859,11 @@ export default function LiveInspectionPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
+          <XMCCVResultsPanel inspection={inspection} />
 
-          <XMCCVResultsPanel
-            inspection={inspection}
-          />
+          <HeatmapPanel inspection={inspection} />
 
-          <HeatmapPanel
-            inspection={inspection}
-          />
-
-          <ODCResultsPanel
-            inspection={inspection}
-          />
+          <ODCResultsPanel inspection={inspection} />
 
           <InspectionDecisionPanel
             inspection={inspection}
@@ -795,9 +875,9 @@ export default function LiveInspectionPage() {
             generating={generating}
             onExport={() => {}}
           />
-
         </div>
       </main>
     </AppLayout>
   );
 }
+
