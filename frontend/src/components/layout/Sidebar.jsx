@@ -5,7 +5,6 @@ import {
   Camera,
   History,
   FileText,
-  LineChart,
   Settings,
   Activity,
   LogOut,
@@ -19,7 +18,6 @@ const navItems = [
   { name: "PCB Inspection", path: "/inspection", icon: Camera, badge: null },
   { name: "History Logs", path: "/history", icon: History, badge: 12 },
   { name: "Quality Reports", path: "/reports", icon: FileText, badge: 3 },
-  { name: "Analytics", path: "/analytics", icon: LineChart, badge: "NEW" },
   { name: "System Settings", path: "/settings", icon: Settings, badge: null },
 ];
 

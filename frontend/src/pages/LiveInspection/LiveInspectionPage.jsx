@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import AppLayout from "../../components/layout/AppLayout";
 import Button from "../../components/common/Button";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
 import apiClient from "../../services/apiClient";
+import { uploadApi } from "../../services/api/uploadApi";
 import {
   Activity,
   RefreshCw,
@@ -10,6 +12,10 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
+  Upload,
+  Camera,
+  Image,
+  X,
 } from "lucide-react";
 
 import InspectionImagePanel from "../../components/inspection/InspectionImagePanel";
@@ -307,13 +313,79 @@ function normalizeInspectionResponse(response) {
 
 export default function LiveInspectionPage() {
   const { cameraStatus } = useCameraStatus();
+  const location = useLocation();
+
+  // If navigated from Dashboard "Test with PCB Image" button, default to upload mode
+  const initialMode = location.state?.mode === "upload" ? "upload" : "camera";
 
   const cameraConnected = cameraStatus.connected;
 
+  const [inspectionMode, setInspectionMode] = useState(initialMode);
   const [notice, setNotice] = useState("");
   const [isCapturing, setIsCapturing] = useState(false);
   const [inspection, setInspection] = useState(loadSavedInspection);
   const [selectedDetection, setSelectedDetection] = useState(null);
+
+  // Upload mode state
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadPreview, setUploadPreview] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleFileSelect = useCallback((file) => {
+    if (!file || !file.type.startsWith("image/")) {
+      setNotice("Please select a valid image file (JPG, PNG, etc.).");
+      return;
+    }
+    setUploadFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setUploadPreview(e.target.result);
+    reader.readAsDataURL(file);
+    setNotice("");
+  }, []);
+
+  const handleDrop = useCallback(
+    (e) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) handleFileSelect(file);
+    },
+    [handleFileSelect]
+  );
+
+  const handleUploadInspection = async () => {
+    if (!uploadFile || isUploading) return;
+    setInspection(null);
+    setSelectedDetection(null);
+    setIsUploading(true);
+    setNotice("Uploading PCB image for inspection...");
+    try {
+      sessionStorage.removeItem(INSPECTION_STORAGE_KEY);
+      const result = await uploadApi.inspectUploadedImage(uploadFile);
+      if (!result || result.status !== "success") {
+        throw new Error(result?.message || result?.detail || "Upload inspection failed.");
+      }
+      const normalizedInspection = normalizeInspectionResponse(result);
+      saveInspectionResult(normalizedInspection);
+      setInspection(normalizedInspection);
+      setNotice("Upload inspection completed.");
+    } catch (error) {
+      console.error("Upload PCB inspection failed:", error);
+      const detail = error?.response?.data?.detail;
+      let message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Upload inspection failed. Check the backend logs.";
+      if (typeof detail === "string") message = detail;
+      else if (Array.isArray(detail))
+        message = detail.map((item) => (typeof item === "string" ? item : item?.msg || JSON.stringify(item))).join("; ");
+      setNotice(message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleStartInspection = async () => {
     if (isCapturing) return;
@@ -442,19 +514,43 @@ export default function LiveInspectionPage() {
     <AppLayout>
       <main className="flex-1 p-4 md:p-6 space-y-4 max-w-[1600px] w-full">
 
+        {/* ── Page Header ── */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-accent/10 pb-3">
-
           <div>
             <h1 className="font-display text-lg md:text-xl font-bold text-white uppercase tracking-wider">
               PCB Inspection
             </h1>
-
             <p className="font-mono text-[9px] text-accent/70 tracking-widest uppercase">
               Detailed Inspection Workspace
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {/* Mode Toggle */}
+            <div className="flex items-center rounded-lg border border-accent/10 bg-[#050816] p-0.5">
+              <button
+                onClick={() => { setInspectionMode("camera"); setNotice(""); }}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all ${
+                  inspectionMode === "camera"
+                    ? "bg-accent/15 text-accent border border-accent/30"
+                    : "text-slate-500 hover:text-white"
+                }`}
+              >
+                <Camera className="h-3 w-3" />
+                Camera
+              </button>
+              <button
+                onClick={() => { setInspectionMode("upload"); setNotice(""); }}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest transition-all ${
+                  inspectionMode === "upload"
+                    ? "bg-accent/15 text-accent border border-accent/30"
+                    : "text-slate-500 hover:text-white"
+                }`}
+              >
+                <Upload className="h-3 w-3" />
+                Upload
+              </button>
+            </div>
 
             <div
               className={`flex items-center gap-1.5 px-3 py-1 rounded-md border font-display text-[9px] uppercase tracking-wider font-bold ${
@@ -464,19 +560,12 @@ export default function LiveInspectionPage() {
               }`}
             >
               <Activity className="w-3.5 h-3.5" />
-
-              Camera:{" "}
-              {cameraConnected
-                ? "Connected"
-                : "Disconnected"}
+              Camera:{" "}{cameraConnected ? "Connected" : "Disconnected"}
             </div>
 
             {inspection && (
               <div className="flex items-center gap-2 px-3 py-1 rounded-md border border-accent/15 bg-[#050816] font-mono text-[9px]">
-                <span className="text-slate-400">
-                  Inspection ID:
-                </span>
-
+                <span className="text-slate-400">Inspection ID:</span>
                 <span className="text-white font-bold">
                   {inspection.inspection_id || inspection.inspectionId || "—"}
                 </span>
@@ -493,42 +582,104 @@ export default function LiveInspectionPage() {
                       : "border-warning/30 bg-warning/10 text-warning"
                 }`}
               >
-                {isPass ? (
-                  <CheckCircle className="h-3.5 w-3.5" />
-                ) : isFail ? (
-                  <XCircle className="h-3.5 w-3.5" />
-                ) : (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                )}
-
-                {inspection.status ||
-                  "PROCESSING"}
+                {isPass ? <CheckCircle className="h-3.5 w-3.5" />
+                  : isFail ? <XCircle className="h-3.5 w-3.5" />
+                  : <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {inspection.status || "PROCESSING"}
               </span>
             )}
 
-            <Button
-              variant="secondary"
-              className="flex items-center gap-1.5 py-1 px-2.5"
-              onClick={handleStartInspection}
-              disabled={
-                !cameraConnected ||
-                isCapturing
-              }
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${
-                  isCapturing
-                    ? "animate-spin"
-                    : ""
-                }`}
-              />
-
-              {isCapturing
-                ? "INSPECTING..."
-                : "START INSPECTION"}
-            </Button>
+            {inspectionMode === "camera" && (
+              <Button
+                variant="secondary"
+                className="flex items-center gap-1.5 py-1 px-2.5"
+                onClick={handleStartInspection}
+                disabled={!cameraConnected || isCapturing}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isCapturing ? "animate-spin" : ""}`} />
+                {isCapturing ? "INSPECTING..." : "START INSPECTION"}
+              </Button>
+            )}
           </div>
         </div>
+
+        {/* ── Upload Mode Panel ── */}
+        {inspectionMode === "upload" && (
+          <div className="rounded-xl border border-accent/10 bg-[#08140F]/60 p-5 space-y-4">
+            <div className="flex items-center gap-2 border-b border-accent/5 pb-3">
+              <Upload className="h-4 w-4 text-accent" />
+              <span className="font-display text-[10px] font-bold uppercase tracking-widest text-slate-300">
+                Upload PCB Image for Inspection
+              </span>
+            </div>
+
+            {/* Drop Zone */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`relative flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-10 transition-all ${
+                isDragging
+                  ? "border-accent/60 bg-accent/5"
+                  : uploadFile
+                    ? "border-success/40 bg-success/5"
+                    : "border-accent/20 bg-white/[0.015] hover:border-accent/40 hover:bg-accent/[0.025]"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => handleFileSelect(e.target.files?.[0])}
+              />
+              {uploadFile ? (
+                <>
+                  {uploadPreview && (
+                    <img
+                      src={uploadPreview}
+                      alt="PCB preview"
+                      className="max-h-48 rounded-lg object-contain border border-accent/10"
+                    />
+                  )}
+                  <p className="font-mono text-[10px] text-success">{uploadFile.name}</p>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setUploadFile(null); setUploadPreview(null); setNotice(""); }}
+                    className="absolute right-3 top-3 text-slate-500 hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Image className="h-8 w-8 text-slate-600" />
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+                    Drag &amp; drop a PCB image, or click to browse
+                  </p>
+                  <p className="font-mono text-[9px] text-slate-600">JPG, PNG, BMP, WEBP supported</p>
+                </>
+              )}
+            </div>
+
+            {uploadFile && (
+              <div className="flex justify-end">
+                <Button
+                  variant="primary"
+                  className="flex items-center gap-2"
+                  onClick={handleUploadInspection}
+                  disabled={isUploading}
+                >
+                  {isUploading ? (
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Inspecting...</>
+                  ) : (
+                    <><Upload className="h-3.5 w-3.5" /> Run Inspection</>  
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {notice && (
           <div

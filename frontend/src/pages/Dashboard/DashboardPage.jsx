@@ -3,35 +3,37 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import AppLayout from "../../components/layout/AppLayout";
 import GlassCard from "../../components/cards/GlassCard";
-import StatusBadge from "../../components/common/StatusBadge";
 import { useAuth } from "../../context/AuthContext";
 import { useNotifications } from "../../context/NotificationContext";
 import { useDashboard } from "../../hooks/useDashboard";
-import { useInspection, INSPECTION_STATE } from "../../hooks/useInspection";
-import { useUpload } from "../../hooks/useUpload";
-import ScanningOverlay from "../../components/animations/ScanningOverlay";
-import XMCCVResultsPanel from "../../components/inspection/XMCCVResultsPanel";
-import HeatmapPanel from "../../components/inspection/HeatmapPanel";
-import ODCResultsPanel from "../../components/inspection/ODCResultsPanel";
-import InspectionDecisionPanel from "../../components/inspection/InspectionDecisionPanel";
-import XAIExplanationPanel from "../../components/inspection/XAIExplanationPanel";
-import { useReport } from "../../hooks/useReport";
-import { useExport } from "../../hooks/useExport";
-import { useSnapshot } from "../../hooks/useSnapshot";
-import { useXAI } from "../../hooks/useXAI";
 import { useCameraStatus } from "../../hooks/useCameraStatus";
-import { useInspectionHistory } from "../../hooks/useInspectionHistory";
-import { formatConfidence, getBboxStyle } from "../../utils/formatters";
+import { useAnalytics } from "../../hooks/useAnalytics";
 import { TREND_7_DAYS } from "../../services/mock/mockData";
 import NotificationHost from "../../components/common/NotificationHost";
 import Modal from "../../components/common/Modal";
 import { uploadApi } from "../../services/api/uploadApi";
-import { AreaChart, Area, ResponsiveContainer } from "recharts";
+import {
+  AreaChart,
+  Area,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  LabelList,
+  ResponsiveContainer,
+} from "recharts";
 import {
   Play,
   Camera,
   Loader2,
-  RefreshCw,
   AlertTriangle,
   CheckCircle,
   Clock,
@@ -46,23 +48,19 @@ import {
   LogOut,
   User,
   X,
-  Scan,
-  Layers,
-  GitBranch,
-  Info,
-  Sparkles,
   Wrench,
   Plus,
   Wifi,
   Server,
   WifiOff,
-  List,
-  Brain,
-  Shield,
-  Thermometer,
   FileCheck,
-  ExternalLink,
-  History,
+  BarChart3,
+  TrendingUp,
+  PieChart as LucidePie,
+  Gauge,
+  ShieldCheck,
+  Timer,
+  AlertOctagon,
 } from "lucide-react";
 
 const containerVariants = {
@@ -83,31 +81,6 @@ const itemVariants = {
 };
 
 const sparklineData = TREND_7_DAYS.map((d) => ({ value: d.passRate }));
-
-const notifications = [
-  {
-    id: 1,
-    text: "Inspection Failed — PCB-2026-2583",
-    time: "2m ago",
-    type: "fail",
-  },
-  {
-    id: 2,
-    text: "New Report Generated — Q3 Summary",
-    time: "15m ago",
-    type: "info",
-  },
-  { id: 3, text: "Camera #1 Back Online", time: "1h ago", type: "success" },
-  { id: 4, text: "Model Updated to v8.0.3-xai", time: "2h ago", type: "info" },
-];
-
-const inspectionTimeline = [
-  { step: "Capture", icon: Camera, done: true },
-  { step: "YOLO", icon: Scan, done: true },
-  { step: "Grad-CAM", icon: Layers, done: true },
-  { step: "X-MCCV", icon: GitBranch, done: true },
-  { step: "Result", icon: CheckCircle, done: null },
-];
 
 const CAMERA_BADGE = {
   CONNECTED: {
@@ -142,66 +115,295 @@ const CAMERA_BADGE = {
   },
 };
 
+// ── Analytics Semantic Palette ─────────────────────────────────────────────
+const ANALYTICS_C = {
+  pass: "#00FF9C",
+  warn: "#FFC857",
+  crit: "#FF4D6D",
+  info: "#00E5FF",
+  xai: "#a855f7",
+  glow: "rgba(31,227,138,0.25)",
+  tooltipBg: "#08140F",
+};
+
+const ANALYTICS_BAR_COLORS = {
+  "Solder Bridge": "#FF4D6D",
+  "Missing Component": "#FFC857",
+  "Polarity Mismatch": "#67D5EB",
+  Misalignment: "#22D3EE",
+  "Wrong Part": "#A855F7",
+};
+
+function AnalyticsTooltip({ active, payload, label, suffix = "" }) {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div
+      className="tooltip-pop pointer-events-none rounded-xl border px-4 py-2.5 font-mono"
+      style={{
+        background: ANALYTICS_C.tooltipBg,
+        border: `1px solid ${ANALYTICS_C.glow}`,
+        borderRadius: 12,
+        boxShadow:
+          "0 0 24px rgba(31,227,138,0.12), 0 12px 32px rgba(0,0,0,0.5)",
+      }}
+    >
+      <p
+        className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.2em]"
+        style={{ color: "#7ce7ac" }}
+      >
+        {label}
+      </p>
+      <div className="space-y-1">
+        {payload.map((entry, i) => {
+          if (entry.value == null) return null;
+          const color = entry.color || entry.payload?.color || "#32d583";
+          return (
+            <div key={i} className="flex items-center gap-2 text-[10px]">
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                style={{ background: color, boxShadow: `0 0 6px ${color}` }}
+              />
+              <span className="text-slate-200">{entry.name}</span>
+              <span className="ml-3 pl-1 font-bold text-success">
+                {entry.value}
+                {suffix}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsHourlyTooltip({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  const failed = d.inspected - d.pass;
+  const confidence = ((d.pass / d.inspected) * 100).toFixed(1);
+  const rows = [
+    { label: "Inspected", value: d.inspected, color: ANALYTICS_C.info },
+    { label: "Passed", value: d.pass, color: ANALYTICS_C.pass },
+    { label: "Failed", value: failed, color: ANALYTICS_C.crit },
+    { label: "Confidence", value: `${confidence}%`, color: ANALYTICS_C.xai },
+  ];
+  return (
+    <div
+      className="tooltip-pop pointer-events-none rounded-xl border px-4 py-2.5 font-mono"
+      style={{
+        background: ANALYTICS_C.tooltipBg,
+        border: `1px solid ${ANALYTICS_C.glow}`,
+        borderRadius: 12,
+        boxShadow:
+          "0 0 24px rgba(31,227,138,0.12), 0 12px 32px rgba(0,0,0,0.5)",
+      }}
+    >
+      <p
+        className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.2em]"
+        style={{ color: "#7ce7ac" }}
+      >
+        {label} Shift
+      </p>
+      <div className="space-y-1">
+        {rows.map((r) => (
+          <div
+            key={r.label}
+            className="flex items-center justify-between gap-6 text-[10px]"
+          >
+            <span className="text-slate-200">{r.label}</span>
+            <span className="font-bold" style={{ color: r.color }}>
+              {r.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const AnalyticsGlowCursor = ({ points }) => {
+  if (!points || !points.length) return null;
+  const x = points[0].x;
+  return (
+    <line
+      x1={x}
+      y1={0}
+      x2={x}
+      y2={2000}
+      stroke="rgba(31,227,138,0.22)"
+      strokeWidth={1}
+      strokeDasharray="3 3"
+    />
+  );
+};
+
+const AnalyticsActiveBar = (props) => {
+  const { x, y, width, height, fill } = props;
+  return (
+    <rect
+      x={x}
+      y={y}
+      width={width}
+      height={height}
+      rx={4}
+      fill={fill}
+      style={{
+        filter: "brightness(1.15)",
+        transform: "scaleY(1.02)",
+        transformOrigin: "50% 100%",
+        transition: "transform 180ms ease-out, filter 180ms ease-out",
+      }}
+    />
+  );
+};
+
+function AnalyticsDonutStat({ label, value, suffix = "%", prefix = "", color, up }) {
+  return (
+    <div className="flex flex-col items-center rounded-lg border border-accent/[0.06] bg-[#0d1b17]/50 px-2 py-2.5">
+      <span className="font-mono text-[8px] uppercase tracking-widest text-slate-500">
+        {label}
+      </span>
+      <span
+        className={`mt-0.5 flex items-baseline font-mono text-sm font-bold ${color}`}
+      >
+        {up && <span className="mr-0.5 text-[9px]">▲</span>}
+        {prefix}
+        {value}
+        {suffix}
+      </span>
+    </div>
+  );
+}
+
+function AnalyticsMiniKpi({
+  label,
+  value,
+  suffix,
+  decimals,
+  icon: Icon,
+  valueClass,
+  accent,
+  trend,
+  up,
+  delay,
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] }}
+      whileHover={{ y: -4 }}
+      className="group relative overflow-hidden rounded-xl border border-accent/10 bg-[rgba(13,27,23,0.66)] px-4 py-3 backdrop-blur-xl transition-[border-color,box-shadow] duration-250 hover:border-accent/25 hover:shadow-[0_10px_28px_rgba(0,0,0,0.35)]"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-display text-[9px] font-bold uppercase tracking-widest text-slate-500">
+          {label}
+        </span>
+        <span
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.03] transition-all duration-250 group-hover:border-accent/30 group-hover:bg-accent/10 ${accent}`}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+      </div>
+      <div className="mt-1.5 flex items-baseline gap-1">
+        <span className={`font-mono text-2xl font-extrabold ${valueClass}`}>
+          {decimals ? value.toFixed(decimals) : value}
+        </span>
+        {suffix && (
+          <span className="text-xs font-bold text-slate-400">{suffix}</span>
+        )}
+      </div>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <span
+          className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-mono text-[9px] font-bold ${up ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+        >
+          {up ? "▲" : "▼"} {trend}
+        </span>
+        <span className="font-mono text-[9px] text-slate-600">vs yesterday</span>
+      </div>
+    </motion.div>
+  );
+}
+
+const defectDetails = {
+  "Solder Bridge": {
+    weekly: 128,
+    boards: ["PCB-1203", "PCB-3102", "PCB-4421"],
+    severity: "Critical",
+    action:
+      "Review soldering profile & stencil alignment. Re-run AOI on affected batch.",
+  },
+  "Missing Component": {
+    weekly: 96,
+    boards: ["PCB-1188", "PCB-3001", "PCB-4007"],
+    severity: "High",
+    action:
+      "Check pick-and-place feeder calibration and component reel stock.",
+  },
+  "Polarity Mismatch": {
+    weekly: 64,
+    boards: ["PCB-2051", "PCB-2774", "PCB-3312"],
+    severity: "High",
+    action: "Verify component orientation rules in the placement program.",
+  },
+  Misalignment: {
+    weekly: 48,
+    boards: ["PCB-1203", "PCB-3102", "PCB-4421"],
+    severity: "Medium",
+    action: "Re-calibrate fiducial alignment sensors before next shift.",
+  },
+  "Wrong Part": {
+    weekly: 24,
+    boards: ["PCB-1990", "PCB-2122"],
+    severity: "Critical",
+    action: "Audit component kitting and reel traceability immediately.",
+  },
+};
+
+const severityStyles = {
+  Critical: "border-danger/30 bg-danger/10 text-danger",
+  High: "border-warning/30 bg-warning/10 text-warning",
+  Medium: "border-cyan-500/30 bg-cyan-500/10 text-cyan-400",
+};
+
+function AnalyticsSkeletonCard({ className = "h-[340px]" }) {
+  return (
+    <div
+      className={`rounded-2xl border border-accent/5 bg-[rgba(13,27,23,0.5)] p-5 ${className}`}
+    >
+      <div className="skeleton-shimmer h-3 w-40 rounded-md" />
+      <div className="skeleton-shimmer mt-6 h-[70%] rounded-lg" />
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { stats, hasLoadedOnce } = useDashboard();
-  const { items, notify, markAllAsRead } = useNotifications();
-
-  const {
-    pcbImage,
-    inspection,
-    state: inspectionState,
-    errorMessage: inspectionError,
-    scanPhase,
-    setPcbImage,
-    clearPcbImage,
-    runInspection,
-    runUploadedInspection,
-    refreshInspection,
-    resetInspection,
-  } = useInspection();
-
-  const {
-    uploadedImage,
-    uploading: uploadLoading,
-    uploadImage,
-    clearUpload,
-  } = useUpload();
-
-  const { generating, generateReport } = useReport();
-
-  const { exporting, exportCsv } = useExport();
-
-  const { capturing, captureSnapshot } = useSnapshot();
-
-  const { clear: clearXai } = useXAI();
-
+  const { items, markAllAsRead } = useNotifications();
   const { cameraStatus } = useCameraStatus();
   const rpiStatus = cameraStatus.rpiStatus;
 
-  const { records: recentInspections, loading: historyLoading } =
-    useInspectionHistory({
-      page: 1,
-      pageSize: 5,
-      sortBy: "timestamp",
-      order: "desc",
-    });
+  const {
+    data: analyticsData,
+    loading: analyticsLoading,
+    error: analyticsError,
+  } = useAnalytics();
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
-  const [summaryView, setSummaryView] = useState(false);
-  const [selectedComponent, setSelectedComponent] = useState(null);
-  const [actionStatus, setActionStatus] = useState(null);
+  const [selectedDefect, setSelectedDefect] = useState(null);
+
+  // Template creation modal state
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
   const [templateImageCount, setTemplateImageCount] = useState(4);
   const [templateName, setTemplateName] = useState("");
   const [templateModalMessage, setTemplateModalMessage] = useState("");
-  // Manual template-capture session state. Each image requires an explicit
-  // "Capture Image" press — the frontend never captures automatically.
   const [sessionId, setSessionId] = useState(null);
   const [capturedCount, setCapturedCount] = useState(0);
   const [startingCapture, setStartingCapture] = useState(false);
@@ -223,12 +425,10 @@ export default function DashboardPage() {
     setFinishingTemplate(false);
     setCancellingSession(false);
   }, []);
+
   const notifRef = useRef(null);
   const userRef = useRef(null);
   const searchRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const imageRef = useRef(null);
-  const [imageDims, setImageDims] = useState(null);
 
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -257,31 +457,6 @@ export default function DashboardPage() {
     return () => document.removeEventListener("keydown", handleKey);
   }, []);
 
-  // Clear XAI data whenever the active inspection changes.
-  useEffect(() => {
-    clearXai();
-  }, [inspection?.inspectionId, clearXai]);
-
-  // Reset measured dimensions whenever a new image is uploaded.
-  useEffect(() => {
-    setImageDims(null);
-  }, [uploadedImage?.url]);
-
-  const handleImageLoad = (e) => {
-    const { naturalWidth, naturalHeight } = e.currentTarget;
-    if (naturalWidth && naturalHeight) {
-      setImageDims({ width: naturalWidth, height: naturalHeight });
-    }
-  };
-
-  const imageAspect = imageDims
-    ? `${imageDims.width} / ${imageDims.height}`
-    : "600 / 400";
-
-  // Scan is active only during the two sequential AOI sweep phases; both the
-  // Dashboard viewport and the PCB Inspection page share this same state.
-  const scanning = scanPhase === "horizontal" || scanPhase === "vertical";
-
   const formatTime = (d) =>
     d.toLocaleTimeString("en-US", {
       hour: "2-digit",
@@ -296,225 +471,7 @@ export default function DashboardPage() {
       year: "numeric",
     });
 
-  const handleComponentClick = (detection) => {
-    const detail = inspection?.componentDetails?.find((c) =>
-      c.name.toLowerCase().startsWith(detection.id.toLowerCase()),
-    );
-    setSelectedComponent(
-      detail
-        ? { ...detail, id: detection.id }
-        : { name: detection.label, id: detection.id },
-    );
-  };
-
-  // ---- Action handlers ----------------------------------------------------
-  const handleStartInspection = useCallback(async () => {
-    if (
-      scanning ||
-      inspectionState === INSPECTION_STATE.STARTING ||
-      inspectionState === INSPECTION_STATE.INSPECTING
-    ) {
-      return;
-    }
-
-    if (!uploadedImage?.file) {
-      setActionStatus({
-        type: "error",
-        text: "Upload PCB image first. And try again!",
-      });
-
-      notify({
-        type: "error",
-        title: "No PCB Image Available",
-        message: "Upload PCB image first. And try again!",
-      });
-
-      return;
-    }
-
-    setActionStatus(null);
-
-    const result = await runUploadedInspection(uploadedImage.file);
-
-    if (!result.ok) {
-      notify({
-        type: "error",
-        title: "Unable to start inspection.",
-        message: result.message,
-      });
-
-      setActionStatus({
-        type: "error",
-        text: result.message,
-      });
-    }
-  }, [scanning, inspectionState, uploadedImage, runUploadedInspection, notify]);
-
-  const handleFetchResult = useCallback(async () => {
-    const result = await refreshInspection();
-    if (!result.ok) {
-      notify({
-        type: "error",
-        title: "Unable to load inspection result.",
-        message: result.message,
-      });
-    }
-  }, [refreshInspection, notify]);
-
-  const handleFileSelected = useCallback(
-    async (e) => {
-      const file = e.target.files?.[0];
-      e.target.value = "";
-      if (!file) return;
-      setActionStatus(null);
-      const result = await uploadImage(file);
-      if (result.ok) {
-        // A new image means the previous result no longer applies — clear it
-        // so no stale detections/status render on top of the new image, then
-        // register the new PCB frame. Inspection stays idle until the user
-        // explicitly presses START INSPECTION.
-        resetInspection();
-        setSelectedComponent(null);
-        setPcbImage({
-          url: result.result.imageUrl,
-          uploadId: result.result.uploadId || null,
-          name: file.name,
-        });
-      } else {
-        notify({
-          type: "error",
-          title: "Unable to upload PCB image.",
-          message: result.message,
-        });
-        setActionStatus({ type: "error", text: result.message });
-      }
-    },
-    [uploadImage, resetInspection, setPcbImage, notify],
-  );
-
-  const handleDiscardImage = useCallback(() => {
-    clearUpload();
-    // Removes the PCB frame: cancels any running scan, resets inspection to
-    // idle, and invalidates any in-flight run.
-    clearPcbImage();
-    setSelectedComponent(null);
-    setActionStatus({ type: "success", text: "Uploaded image discarded." });
-    notify({
-      type: "success",
-      title: "Image discarded.",
-      message: "Uploaded PCB image removed. Viewport reset.",
-    });
-  }, [clearUpload, clearPcbImage, notify]);
-
-  const handleGenerateReport = useCallback(async () => {
-    if (!inspection) {
-      notify({
-        type: "error",
-        title: "No inspection available.",
-        message: "Complete a PCB inspection before generating a report.",
-      });
-      setActionStatus({
-        type: "error",
-        text: "Complete a PCB inspection before generating a report.",
-      });
-      return;
-    }
-    setActionStatus(null);
-    const result = await generateReport(inspection, {
-      imageUrl: uploadedImage?.url,
-    });
-    if (!result.ok) {
-      notify({
-        type: "error",
-        title: "Unable to generate report.",
-        message: result.message,
-      });
-      setActionStatus({ type: "error", text: result.message });
-      return;
-    }
-    setActionStatus({
-      type: "success",
-      text: `Report ${result.result?.reportId || ""} generated — download started.`,
-    });
-    notify({
-      type: "success",
-      title: "Report Generated",
-      message: "Inspection report generated successfully.",
-    });
-  }, [generateReport, inspection, uploadedImage, notify]);
-
-  const handleExportCsv = useCallback(async () => {
-    if (!inspection) {
-      notify({
-        type: "error",
-        title: "No inspection available.",
-        message: "Complete a PCB inspection before exporting.",
-      });
-      setActionStatus({
-        type: "error",
-        text: "Complete a PCB inspection before exporting.",
-      });
-      return;
-    }
-    setActionStatus(null);
-    const result = await exportCsv(inspection);
-    if (!result.ok) {
-      notify({
-        type: "error",
-        title: "Unable to export inspection data.",
-        message: result.message,
-      });
-      setActionStatus({ type: "error", text: result.message });
-      return;
-    }
-    setActionStatus({
-      type: "success",
-      text: `Exported inspection ${inspection.pcbId || inspection.id}.`,
-    });
-    notify({
-      type: "success",
-      title: "Export Complete",
-      message: `Inspection ${inspection.pcbId || ""} exported to ${result.filename || "CSV"}.`,
-    });
-  }, [exportCsv, inspection, notify]);
-
-  const handleCaptureSnapshot = useCallback(async () => {
-    setActionStatus(null);
-    const result = await captureSnapshot({
-      imageElement: imageRef.current,
-      inspection,
-    });
-    if (!result.ok) {
-      notify({
-        type: "error",
-        title: "Unable to capture snapshot.",
-        message: result.message,
-      });
-
-      setActionStatus({
-        type: "error",
-        text: result.message,
-      });
-
-      return;
-    }
-
-    notify({
-      type: "success",
-      title: "Snapshot Captured",
-      message: `${result.filename} downloaded successfully.`,
-    });
-
-    setActionStatus({
-      type: "success",
-      text: "Snapshot captured successfully.",
-    });
-  }, [captureSnapshot, inspection, notify]);
-
-  // ---- Manual template-capture handlers -----------------------------------
-  // Each step is a single explicit user action. The frontend never captures
-  // automatically; the Raspberry Pi captures exactly one image per request.
-
+  // ---- Template creation modal handlers ----
   const handleStartCapture = useCallback(async () => {
     if (!templateName.trim()) {
       setTemplateModalMessage("Please enter a template name.");
@@ -539,17 +496,13 @@ export default function DashboardPage() {
 
       const newSessionId = result.session_id || result.template_id;
       if (!newSessionId) {
-        throw new Error(
-          "Backend did not return a template session ID.",
-        );
+        throw new Error("Backend did not return a template session ID.");
       }
 
       setSessionId(newSessionId);
-      setCapturedCount(
-        Number(result.captured_images ?? 0) || 0,
-      );
+      setCapturedCount(Number(result.captured_images ?? 0) || 0);
       setTemplateModalMessage(
-        `Session started. Capture reference images one at a time.`,
+        "Session started. Capture reference images one at a time.",
       );
     } catch (err) {
       setTemplateModalMessage(
@@ -575,19 +528,16 @@ export default function DashboardPage() {
 
     try {
       const result = await uploadApi.captureTemplateImage(sessionId);
-
       const newCount = Number(result.captured_images ?? 0);
       if (Number.isFinite(newCount)) {
         setCapturedCount(newCount);
       }
-
       setTemplateModalMessage(
-        `Captured image ${result.captured_images ?? "?"} of ${result.expected_images ?? templateImageCount}. Adjust the PCB, then capture the next image.`,
+        `Image ${newCount} of ${templateImageCount} captured. Reposition PCB for next angle.`,
       );
     } catch (err) {
       setTemplateModalMessage(
-        err?.message ||
-          "Could not capture reference image. Please try again.",
+        err?.message || "Capture failed. Check camera alignment and try again.",
       );
     } finally {
       setCapturingImage(false);
@@ -595,31 +545,13 @@ export default function DashboardPage() {
   }, [sessionId, capturingImage, templateImageCount]);
 
   const handleFinishTemplate = useCallback(async () => {
-    if (!sessionId) {
-      setTemplateModalMessage(
-        "No active template capture session. Start capture first.",
-      );
-      return;
-    }
-
-    if (capturedCount !== templateImageCount) {
-      setTemplateModalMessage(
-        `Capture all ${templateImageCount} reference images before finishing. Currently captured: ${capturedCount}.`,
-      );
-      return;
-    }
-
+    if (!sessionId) return;
     setFinishingTemplate(true);
     setTemplateModalMessage("");
 
     try {
-      const result = await uploadApi.finishTemplate(sessionId);
-
-      setTemplateModalMessage(
-        `Template "${templateName || "Untitled"}" saved successfully.`,
-      );
-
-      // Reset modal state after a short delay so the success message shows.
+      await uploadApi.finishTemplate(sessionId);
+      setTemplateModalMessage("Template created and saved successfully!");
       setTimeout(() => {
         setShowCreateTemplateModal(false);
         setTemplateName("");
@@ -630,174 +562,32 @@ export default function DashboardPage() {
     } catch (err) {
       setTemplateModalMessage(
         err?.message ||
-          "Could not finish template. Please try again.",
+          "Could not save template on Raspberry Pi. Please retry.",
       );
     } finally {
       setFinishingTemplate(false);
     }
-  }, [
-    sessionId,
-    capturedCount,
-    templateImageCount,
-    templateName,
-    resetTemplateSession,
-  ]);
+  }, [sessionId, resetTemplateSession]);
 
   const handleCancelTemplateSession = useCallback(async () => {
-    if (!sessionId) {
-      return;
-    }
-
-    if (cancellingSession) return;
+    if (!sessionId) return;
     setCancellingSession(true);
-
     try {
       await uploadApi.cancelTemplate(sessionId);
     } catch (err) {
-      setTemplateModalMessage(
-        err?.message ||
-          "Could not cancel the template session on the Raspberry Pi.",
-      );
+      console.warn("Cancel template session error:", err);
     } finally {
-      // Always clear the local session state so the modal is not left
-      // stranded behind an in-progress capture.
       setSessionId(null);
       setCapturedCount(0);
       setCancellingSession(false);
     }
-  }, [sessionId, cancellingSession]);
+  }, [sessionId]);
 
-  // ---- Derived inspection metrics ------------------------------------------
-  const presenceFailures =
-    inspection?.verificationDetails?.presence?.filter(
-      (p) => p.status === "FAIL",
-    ).length || 0;
-  const allChecksPass =
-    inspection?.verificationDetails?.presence?.every(
-      (p) => p.status === "PASS",
-    ) &&
-    inspection?.verificationDetails?.position?.every(
-      (p) => p.status === "PASS",
-    ) &&
-    inspection?.verificationDetails?.orientation?.every(
-      (p) => p.status === "PASS",
-    );
-
-  // Backend may report that the uploaded image is not a PCB at all.
-  const isNotPcb =
-    !!inspection &&
-    (inspection.isPcb === false ||
-      String(inspection.status || "").toUpperCase() === "NOT_PCB");
-
-  // ---- XAI explanation content ---------------------------------------------
-  // Structured XAI payload expected from the backend:
-  //   {
-  //     defect: "...",         → WHAT'S WRONG?
-  //     location: "...",       → WHERE IS IT?
-  //     explanation: "...",    → plain-language explanation / pass rationale
-  //     recommendation: "...", → HOW TO FIX IT?
-  //     visualization: "..."   → image URL for the highlighted region
-  //   }
-  // The frontend only presents backend-provided text — it never invents
-  // defect-specific explanations.
-  const xai = inspection?.xai ?? {};
-  const isPass = inspection?.status === "PASS";
-  const isInspected = inspection?.status === "INSPECTED";
-  const isMlPending = inspection?.modelName === "Pending";
-
-  const xaiWhatWrong = isNotPcb
-    ? "The uploaded image could not be identified as a valid PCB."
-    : isInspected
-      ? "YOLO detection completed. X-MCCV verification and XAI analysis are pending."
-      : xai.defect ||
-        xai.explanation ||
-        (typeof inspection?.xaiExplanation === "string"
-          ? inspection.xaiExplanation
-          : inspection?.xaiExplanation?.explanation ||
-            inspection?.xaiExplanation?.class_name ||
-            null) ||
-        (isPass
-          ? "No significant visual defect detected."
-          : "The backend flagged this board as defective, but has not provided an explanation yet.");
-
-  const xaiWhyPass = isMlPending
-    ? "The ML inspection model has not been integrated yet. This PASS result is a temporary backend state."
-    : isPass
-      ? xai.explanation ||
-        "The inspected component regions and PCB layout appear consistent with the expected visual pattern."
-      : "";
-
-  const xaiWhere =
-    xai.location ||
-    (isInspected
-      ? "YOLO detected objects on the board. X-MCCV verification is pending."
-      : isMlPending
-        ? "Defect location will be available after ML inspection is integrated."
-        : "The backend has not provided the affected region yet.");
-
-  const xaiFix = isInspected
-    ? "YOLO detection completed. X-MCCV verification and XAI analysis are pending."
-    : isMlPending
-      ? "No corrective action is available yet. ML-based defect detection will provide the actual recommendation."
-      : xai.recommendation ||
-        (isPass
-          ? "No corrective action required. Board can proceed to the next stage."
-          : "Corrective action details are not available from the backend yet. Inspect the highlighted region and rerun the inspection.");
-
-  const xaiVisualUrl =
-    inspection?.xai?.overlayUrl ||
-    inspection?.xai?.visualization ||
-    inspection?.xai?.heatmapUrl ||
-    null;
   const cameraBadge = CAMERA_BADGE[cameraStatus.status] || CAMERA_BADGE.UNKNOWN;
 
-  // Bottom status bar presentation per inspection lifecycle state.
-  const hudStatus = {
-    [INSPECTION_STATE.READY]: { text: "READY", cls: "text-slate-400" },
-    [INSPECTION_STATE.STARTING]: { text: "INSPECTING", cls: "text-warning" },
-    [INSPECTION_STATE.INSPECTING]: { text: "INSPECTING", cls: "text-warning" },
-    [INSPECTION_STATE.ERROR]: { text: "INSPECTION ERROR", cls: "text-danger" },
-  }[inspectionState];
-
-  const inspectionButton = scanning
-    ? { label: "Inspecting...", icon: RefreshCw, loading: true, disabled: true }
-    : {
-        [INSPECTION_STATE.READY]: {
-          label: "Start Inspection",
-          icon: Play,
-          loading: false,
-          disabled: false,
-        },
-        [INSPECTION_STATE.STARTING]: {
-          label: "Starting...",
-          icon: Loader2,
-          loading: true,
-          disabled: true,
-        },
-        [INSPECTION_STATE.INSPECTING]: {
-          label: "Inspecting...",
-          icon: RefreshCw,
-          loading: false,
-          disabled: false,
-        },
-        [INSPECTION_STATE.COMPLETED]: {
-          label: "Start Inspection",
-          icon: Play,
-          loading: false,
-          disabled: false,
-        },
-        [INSPECTION_STATE.ERROR]: {
-          label: "Retry Inspection",
-          icon: Play,
-          loading: false,
-          disabled: false,
-        },
-      }[inspectionState] || {
-        label: "Start Inspection",
-        icon: Play,
-        loading: false,
-        disabled: false,
-      };
+  const selectedDefectInfo = selectedDefect
+    ? { ...selectedDefect, ...defectDetails[selectedDefect.name] }
+    : null;
 
   return (
     <AppLayout>
@@ -920,7 +710,6 @@ export default function DashboardPage() {
                           if (item.label === "Profile") {
                             setShowProfile(true);
                           }
-
                           if (item.label === "Settings") {
                             setShowUserMenu(false);
                             navigate("/settings");
@@ -937,9 +726,7 @@ export default function DashboardPage() {
                   <button
                     onClick={() => {
                       setShowUserMenu(false);
-
                       navigate("/", { replace: true });
-
                       setTimeout(() => {
                         logout();
                       }, 0);
@@ -963,7 +750,7 @@ export default function DashboardPage() {
         animate="visible"
         className="space-y-5 p-6"
       >
-        {/* ---- HEADER ---- */}
+        {/* ---- HEADER (Preserved unchanged) ---- */}
         <motion.div
           variants={itemVariants}
           className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
@@ -1024,7 +811,7 @@ export default function DashboardPage() {
                   </span>
                 ))}
               </div>
-              {/* Raspberry Pi connectivity status — separate from camera status */}
+              {/* Raspberry Pi connectivity status */}
               <div className="flex items-center gap-2 mt-2">
                 {rpiStatus.status === "CONNECTED" ? (
                   <>
@@ -1057,7 +844,7 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
-            {/* CREATE NEW TEMPLATE button — positioned on RHS below LIVE indicator */}
+            {/* CREATE NEW TEMPLATE button */}
             <div className="lg:ml-auto">
               <motion.button
                 whileHover={{ scale: 1.03, y: -2 }}
@@ -1078,72 +865,32 @@ export default function DashboardPage() {
           </div>
         </motion.div>
 
-        {/* ---- QUICK ACTIONS ---- */}
+        {/* ---- QUICK ACTIONS (Preserved buttons & navigation) ---- */}
         <motion.div variants={itemVariants} className="space-y-2">
           <div className="flex flex-wrap items-center gap-3">
-            {/* START INSPECTION */}
+            {/* START INSPECTION — routes to PCB Inspection workspace */}
             <motion.button
-              whileHover={
-                inspectionButton.disabled ? undefined : { scale: 1.03, y: -2 }
-              }
-              whileTap={inspectionButton.disabled ? undefined : { scale: 0.97 }}
-              onClick={
-                inspectionState === INSPECTION_STATE.INSPECTING
-                  ? handleFetchResult
-                  : handleStartInspection
-              }
-              disabled={inspectionButton.disabled}
-              className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest shadow-lg transition-all duration-300 ${
-                inspectionButton.disabled
-                  ? "cursor-not-allowed bg-accent/40 text-primary-bg/70"
-                  : "bg-accent text-primary-bg hover:shadow-[0_0_30px_rgba(50,213,131,0.25)]"
-              }`}
+              whileHover={{ scale: 1.03, y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => navigate("/inspection")}
+              className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest shadow-lg transition-all duration-300 bg-accent text-primary-bg hover:shadow-[0_0_30px_rgba(50,213,131,0.25)]"
             >
-              <inspectionButton.icon
-                className={`h-3.5 w-3.5 ${inspectionButton.loading ? "animate-spin" : ""}`}
-              />
-              {inspectionButton.label}
+              <Play className="h-3.5 w-3.5" />
+              Start Inspection
             </motion.button>
 
-            {/* TEST WITH PCB IMAGE — secondary/testing path via the existing local upload */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={handleFileSelected}
-            />
+            {/* TEST WITH PCB IMAGE — routes directly into Uploaded-Image mode */}
             <motion.button
-              whileHover={uploadLoading ? undefined : { scale: 1.03, y: -2 }}
-              whileTap={uploadLoading ? undefined : { scale: 0.97 }}
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadLoading}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
-                uploadLoading
-                  ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
-                  : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-              }`}
+              whileHover={{ scale: 1.03, y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() =>
+                navigate("/inspection", { state: { mode: "upload" } })
+              }
+              className="group inline-flex items-center gap-2 rounded-xl border border-accent/20 bg-white/[0.03] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/80 backdrop-blur-sm transition-all duration-300 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
             >
-              {uploadLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Upload className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-              )}
-              {uploadLoading ? "Uploading..." : "Test with PCB Image"}
+              <Upload className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+              Test with PCB Image
             </motion.button>
-
-            {/* DISCARD UPLOADED IMAGE */}
-            {uploadedImage && (
-              <motion.button
-                whileHover={{ scale: 1.03, y: -2 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={handleDiscardImage}
-                className="group inline-flex items-center gap-2 rounded-xl border border-danger/25 bg-danger/[0.06] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-danger/90 backdrop-blur-sm transition-all duration-300 hover:border-danger/50 hover:bg-danger/10 hover:text-danger hover:shadow-[0_0_20px_rgba(255,77,109,0.1)]"
-              >
-                <X className="h-3.5 w-3.5 transition-transform duration-300 group-hover:rotate-90" />
-                Discard Image
-              </motion.button>
-            )}
           </div>
 
           {/* Secondary utility actions */}
@@ -1153,85 +900,44 @@ export default function DashboardPage() {
               Utilities
             </span>
 
-            {/* GENERATE REPORT */}
+            {/* GENERATE REPORT — navigates to reports workflow */}
             <motion.button
-              whileHover={
-                generating || !inspection ? undefined : { scale: 1.03, y: -2 }
+              whileHover={{ scale: 1.03, y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => navigate("/reports")}
+              className="group inline-flex items-center gap-2 rounded-xl border border-accent/20 bg-white/[0.03] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/80 backdrop-blur-sm transition-all duration-300 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
+            >
+              <FileText className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+              Generate Report
+            </motion.button>
+
+            {/* EXPORT DATA — navigates to history logs/exports */}
+            <motion.button
+              whileHover={{ scale: 1.03, y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => navigate("/history")}
+              className="group inline-flex items-center gap-2 rounded-xl border border-accent/20 bg-white/[0.03] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/80 backdrop-blur-sm transition-all duration-300 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
+            >
+              <Download className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+              Export Data
+            </motion.button>
+
+            {/* CAPTURE SNAPSHOT — direct link to camera inspection */}
+            <motion.button
+              whileHover={{ scale: 1.03, y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() =>
+                navigate("/inspection", { state: { mode: "camera" } })
               }
-              whileTap={generating || !inspection ? undefined : { scale: 0.97 }}
-              onClick={handleGenerateReport}
-              disabled={generating}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
-                generating || !inspection
-                  ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
-                  : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-              }`}
+              className="group inline-flex items-center gap-2 rounded-xl border border-accent/20 bg-white/[0.03] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/80 backdrop-blur-sm transition-all duration-300 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
             >
-              {generating ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <FileText className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-              )}
-              {generating ? "GENERATING REPORT..." : "Generate Report"}
-            </motion.button>
-
-            {/* EXPORT CSV */}
-            <motion.button
-              whileHover={exporting || !inspection ? undefined : { scale: 1.03, y: -2 }}
-              whileTap={exporting || !inspection ? undefined : { scale: 0.97 }}
-              onClick={handleExportCsv}
-              disabled={exporting || !inspection}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
-                exporting || !inspection
-                  ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
-                  : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-              }`}
-            >
-              {exporting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Download className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-              )}
-              {exporting ? "Exporting..." : "Export Data"}
-            </motion.button>
-
-            {/* CAPTURE SNAPSHOT */}
-            <motion.button
-              whileHover={capturing ? undefined : { scale: 1.03, y: -2 }}
-              whileTap={capturing ? undefined : { scale: 0.97 }}
-              onClick={handleCaptureSnapshot}
-              disabled={capturing}
-              className={`group inline-flex items-center gap-2 rounded-xl border px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest backdrop-blur-sm transition-all duration-300 ${
-                capturing
-                  ? "cursor-not-allowed border-accent/10 bg-white/[0.02] text-slate-600"
-                  : "border-accent/20 bg-white/[0.03] text-white/80 hover:border-accent/40 hover:bg-accent/5 hover:text-white hover:shadow-[0_0_20px_rgba(50,213,131,0.1)]"
-              }`}
-            >
-              {capturing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Image className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-              )}
-              {capturing ? "Capturing..." : "Capture Snapshot"}
+              <Image className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+              Capture Snapshot
             </motion.button>
           </div>
-
-          {/* Action result / error line — reflects the real API response */}
-          <AnimatePresence>
-            {actionStatus && (
-              <motion.p
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                className={`font-mono text-[10px] tracking-wide ${actionStatus.type === "error" ? "text-danger" : "text-accent"}`}
-              >
-                {actionStatus.text}
-              </motion.p>
-            )}
-          </AnimatePresence>
         </motion.div>
 
-        {/* ---- KPI CARDS (backend-driven) ---- */}
+        {/* ---- KPI CARDS (backend-driven, preserved exactly) ---- */}
         {stats ? (
           <motion.div
             variants={itemVariants}
@@ -1336,743 +1042,654 @@ export default function DashboardPage() {
           </motion.div>
         ) : null}
 
-        {/* ---- PRIMARY INSPECTION GRID: LIVE VIEWPORT + XAI ANALYSIS ---- */}
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[61fr_39fr] items-start">
-          {/* ---- LEFT: INSPECTION STATUS ---- */}
-          <motion.div variants={itemVariants} className="space-y-4">
-            <GlassCard className="flex flex-col" hoverLift={false}>
-              {/* Camera header */}
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-accent/5 pb-3">
-                <div className="flex items-center gap-2">
-                  <Camera className="h-4 w-4 text-accent" />
-                  <span className="font-display text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                    Inspection Status
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {/* Summary control — switches the panel between status view and summary */}
-                  <button
-                    onClick={() => setSummaryView(!summaryView)}
-                    disabled={!inspection}
-                    className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider transition-all ${
-                      !inspection
-                        ? "cursor-not-allowed text-slate-700"
-                        : summaryView
-                          ? "bg-accent/15 text-accent border border-accent/30"
-                          : "border border-accent/10 text-slate-500 hover:text-slate-300"
-                    }`}
-                  >
-                    <Info className="h-3 w-3" />
-                    {summaryView ? "Live View" : "Summary"}
-                  </button>
-                  {/* Camera status badge — status indicator, not a button */}
+        {/* ---- INTEGRATED SYSTEM QUALITY ANALYTICS ---- */}
+        <motion.div variants={itemVariants} className="space-y-5 pt-2">
+          <div className="flex flex-col gap-1 border-b border-accent/10 pb-3">
+            <h2 className="font-display text-lg font-bold uppercase tracking-wider text-white">
+              System Quality Analytics
+            </h2>
+            <p className="font-mono text-[10px] uppercase tracking-widest text-accent/70">
+              Statistical Yield and Performance Metrics
+            </p>
+          </div>
+
+          {analyticsError && !analyticsData ? (
+            <div className="h-48 flex flex-col items-center justify-center gap-2 font-mono text-xs text-slate-500 uppercase tracking-widest rounded-xl border border-accent/5 bg-[#08140F]/60">
+              <span className="text-danger">Unable to retrieve analytics data.</span>
+              <span className="text-slate-600 normal-case">Please check backend connectivity.</span>
+            </div>
+          ) : analyticsLoading ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => (
                   <div
-                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[9px] font-display font-bold uppercase tracking-wider select-none ${cameraBadge.cls}`}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${cameraBadge.dot}`}
-                    />
-                    {cameraBadge.label}
+                    key={i}
+                    className="skeleton-shimmer h-[92px] rounded-xl"
+                  />
+                ))}
+              </div>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-12">
+                <div className="md:col-span-1 lg:col-span-4">
+                  <AnalyticsSkeletonCard />
+                </div>
+                <div className="md:col-span-1 lg:col-span-8">
+                  <AnalyticsSkeletonCard />
+                </div>
+                <div className="lg:col-span-12">
+                  <AnalyticsSkeletonCard className="h-[350px]" />
+                </div>
+                <div className="lg:col-span-6">
+                  <AnalyticsSkeletonCard className="h-[320px]" />
+                </div>
+                <div className="lg:col-span-6">
+                  <AnalyticsSkeletonCard className="h-[320px]" />
+                </div>
+              </div>
+            </div>
+          ) : (
+            (() => {
+              const {
+                kpis = [],
+                qualitySummary = [],
+                donutStats = [],
+                yieldRate = 0,
+                defectChart = [],
+                hourlyThroughput = [],
+                trend7Days = [],
+              } = analyticsData || {};
+
+              return (
+                <div className="space-y-6">
+                  {/* KPI Mini Cards */}
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    {kpis.map((kpi, i) => {
+                      const kpiMeta = [
+                        {
+                          icon: Gauge,
+                          valueClass: "text-success",
+                          accent: "text-success",
+                        },
+                        {
+                          icon: AlertOctagon,
+                          valueClass: "text-danger",
+                          accent: "text-danger",
+                        },
+                        {
+                          icon: ShieldCheck,
+                          valueClass: "text-accent",
+                          accent: "text-accent",
+                        },
+                        {
+                          icon: Timer,
+                          valueClass: "text-cyan-400",
+                          accent: "text-cyan-400",
+                        },
+                      ][i] || {
+                        icon: Gauge,
+                        valueClass: "text-accent",
+                        accent: "text-accent",
+                      };
+                      return (
+                        <AnalyticsMiniKpi
+                          key={kpi.label}
+                          {...kpi}
+                          {...kpiMeta}
+                          delay={0.05 + i * 0.05}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  {/* Charts Grid */}
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-12">
+                    {/* Donut Chart: Quality Yield Summary */}
+                    <GlassCard
+                      className="flex h-[340px] flex-col justify-between md:col-span-1 lg:col-span-4"
+                      hoverLift={false}
+                    >
+                      <div className="flex items-center gap-2 border-b border-accent/5 pb-3 text-left">
+                        <LucidePie className="h-4 w-4 text-success" />
+                        <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
+                          Quality Yield Summary
+                        </span>
+                      </div>
+
+                      <div className="relative flex h-44 w-full items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={qualitySummary}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={52}
+                              outerRadius={72}
+                              paddingAngle={3}
+                              dataKey="value"
+                              isAnimationActive
+                              animationBegin={150}
+                              animationDuration={850}
+                              animationEasing="ease-out"
+                            >
+                              {qualitySummary.map((entry, index) => (
+                                <Cell
+                                  key={`cell-${index}`}
+                                  fill={entry.color}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              content={<AnalyticsTooltip suffix="%" />}
+                              cursor={false}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="absolute flex flex-col items-center">
+                          <span className="font-mono text-xl font-extrabold text-white">
+                            {yieldRate}
+                            <span className="text-success">%</span>
+                          </span>
+                          <span className="font-display text-[8px] uppercase tracking-widest text-slate-500">
+                            Yield Rate
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2.5">
+                        <div className="grid grid-cols-3 gap-2">
+                          {donutStats.map((stat, idx) => (
+                            <AnalyticsDonutStat
+                              key={stat.label}
+                              label={stat.label}
+                              value={stat.value}
+                              color={
+                                idx === 0
+                                  ? "text-accent"
+                                  : idx === 1
+                                    ? "text-slate-300"
+                                    : "text-success"
+                              }
+                              up={stat.up}
+                            />
+                          ))}
+                        </div>
+                        <div className="flex justify-around gap-4 font-mono text-[9px]">
+                          {qualitySummary.map((entry, idx) => (
+                            <div key={idx} className="flex items-center gap-1.5">
+                              <span
+                                className="h-2.5 w-2.5 rounded-sm"
+                                style={{ backgroundColor: entry.color }}
+                              />
+                              <span className="text-slate-400">
+                                {entry.name}:{" "}
+                                <strong className="text-white">
+                                  {entry.value}%
+                                </strong>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </GlassCard>
+
+                    {/* Bar Chart: Anomalies Categories */}
+                    <GlassCard
+                      className="flex h-[340px] flex-col justify-between md:col-span-1 lg:col-span-8"
+                      hoverLift={false}
+                    >
+                      <div className="flex items-center justify-between border-b border-accent/5 pb-3 text-left">
+                        <div className="flex items-center gap-2">
+                          <BarChart3 className="h-4 w-4 text-warning" />
+                          <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
+                            Anomalies Categories
+                          </span>
+                        </div>
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">
+                          Click a bar for details
+                        </span>
+                      </div>
+
+                      <div className="mt-4 h-60 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={defectChart}
+                            margin={{ left: -14, right: 6, top: 20, bottom: 0 }}
+                            barCategoryGap="30%"
+                          >
+                            <CartesianGrid
+                              horizontal
+                              vertical={false}
+                              strokeDasharray="3 3"
+                              stroke="rgba(148,163,184,0.08)"
+                            />
+                            <XAxis
+                              dataKey="name"
+                              stroke="#64748b"
+                              fontSize={9}
+                              fontFamily="Orbitron"
+                              tickLine={false}
+                              axisLine={{ stroke: "rgba(148,163,184,0.12)" }}
+                              interval={0}
+                            />
+                            <YAxis
+                              stroke="#64748b"
+                              fontSize={9}
+                              fontFamily="JetBrains Mono"
+                              tickLine={false}
+                              axisLine={false}
+                              domain={[0, (dataMax) => Math.ceil(dataMax * 1.2)]}
+                              allowDecimals={false}
+                            />
+                            <Tooltip
+                              content={<AnalyticsTooltip />}
+                              cursor={false}
+                            />
+                            <Bar
+                              dataKey="count"
+                              radius={[4, 4, 0, 0]}
+                              barSize={30}
+                              maxBarSize={34}
+                              isAnimationActive
+                              animationBegin={150}
+                              animationDuration={750}
+                              animationEasing="ease-out"
+                              activeBar={<AnalyticsActiveBar />}
+                              onClick={(barData) => setSelectedDefect(barData)}
+                            >
+                              {defectChart.map((entry, idx) => (
+                                <Cell
+                                  key={`cell-${idx}`}
+                                  fill={
+                                    ANALYTICS_BAR_COLORS[entry.name] ||
+                                    entry.color
+                                  }
+                                />
+                              ))}
+                              <LabelList
+                                dataKey="count"
+                                position="top"
+                                formatter={(v) => v}
+                                style={{
+                                  fontSize: 9,
+                                  fontFamily: "JetBrains Mono",
+                                  fontWeight: 700,
+                                  fill: "#94A3B8",
+                                }}
+                              />
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </GlassCard>
+
+                    {/* Area Chart: Hourly Throughput */}
+                    <GlassCard
+                      className="flex h-[350px] flex-col justify-between md:col-span-2 lg:col-span-12"
+                      hoverLift={false}
+                    >
+                      <div className="flex items-center justify-between border-b border-accent/5 pb-3 text-left">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-accent" />
+                          <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
+                            Shift Throughput Activity
+                          </span>
+                        </div>
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-slate-500">
+                          Scans / Hour
+                        </span>
+                      </div>
+
+                      <div className="mt-5 h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart
+                            data={hourlyThroughput}
+                            margin={{ left: -10, right: 10, top: 10, bottom: 5 }}
+                          >
+                            <defs>
+                              <linearGradient
+                                id="dashColorInspected"
+                                x1="0"
+                                y1="0"
+                                x2="0"
+                                y2="1"
+                              >
+                                <stop
+                                  offset="5%"
+                                  stopColor={ANALYTICS_C.info}
+                                  stopOpacity={0.2}
+                                />
+                                <stop
+                                  offset="95%"
+                                  stopColor={ANALYTICS_C.info}
+                                  stopOpacity={0}
+                                />
+                              </linearGradient>
+                              <linearGradient
+                                id="dashColorPass"
+                                x1="0"
+                                y1="0"
+                                x2="0"
+                                y2="1"
+                              >
+                                <stop
+                                  offset="5%"
+                                  stopColor={ANALYTICS_C.pass}
+                                  stopOpacity={0.2}
+                                />
+                                <stop
+                                  offset="95%"
+                                  stopColor={ANALYTICS_C.pass}
+                                  stopOpacity={0}
+                                />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              stroke="rgba(0,229,255,0.02)"
+                            />
+                            <XAxis
+                              dataKey="hour"
+                              stroke="#64748b"
+                              fontSize={9}
+                              fontFamily="JetBrains Mono"
+                              tickLine={false}
+                            />
+                            <YAxis
+                              stroke="#64748b"
+                              fontSize={9}
+                              fontFamily="JetBrains Mono"
+                              tickLine={false}
+                            />
+                            <Tooltip
+                              content={<AnalyticsHourlyTooltip />}
+                              cursor={<AnalyticsGlowCursor />}
+                            />
+                            <Legend
+                              verticalAlign="top"
+                              height={36}
+                              iconType="plainline"
+                              wrapperStyle={{
+                                fontSize: "10px",
+                                fontFamily: "Orbitron",
+                                color: "#94A3B8",
+                              }}
+                            />
+                            <Area
+                              name="Total Inspected"
+                              type="monotone"
+                              dataKey="inspected"
+                              stroke={ANALYTICS_C.info}
+                              fillOpacity={1}
+                              fill="url(#dashColorInspected)"
+                              strokeWidth={2}
+                              isAnimationActive
+                              animationBegin={200}
+                              animationDuration={900}
+                              animationEasing="ease-out"
+                              activeDot={{
+                                r: 4,
+                                fill: ANALYTICS_C.info,
+                                stroke: "#08140F",
+                                strokeWidth: 2,
+                              }}
+                            />
+                            <Area
+                              name="Passed Units"
+                              type="monotone"
+                              dataKey="pass"
+                              stroke={ANALYTICS_C.pass}
+                              fillOpacity={1}
+                              fill="url(#dashColorPass)"
+                              strokeWidth={1.5}
+                              isAnimationActive
+                              animationBegin={350}
+                              animationDuration={900}
+                              animationEasing="ease-out"
+                              activeDot={{
+                                r: 4,
+                                fill: ANALYTICS_C.pass,
+                                stroke: "#08140F",
+                                strokeWidth: 2,
+                              }}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </GlassCard>
+
+                    {/* Line Chart: Weekly Pass Yield Trend */}
+                    <GlassCard
+                      className="flex h-[320px] flex-col justify-between md:col-span-1 lg:col-span-6"
+                      hoverLift={false}
+                    >
+                      <div className="flex items-center gap-2 border-b border-accent/5 pb-3 text-left">
+                        <TrendingUp className="h-4 w-4 text-accent" />
+                        <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
+                          Weekly Pass Yield Trend
+                        </span>
+                      </div>
+
+                      <div className="mt-5 h-56 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={trend7Days}
+                            margin={{ left: -10, right: 10, top: 10, bottom: 5 }}
+                          >
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              stroke="rgba(0,229,255,0.02)"
+                            />
+                            <XAxis
+                              dataKey="day"
+                              stroke="#64748b"
+                              fontSize={9}
+                              fontFamily="Orbitron"
+                              tickLine={false}
+                            />
+                            <YAxis
+                              stroke="#64748b"
+                              fontSize={9}
+                              fontFamily="JetBrains Mono"
+                              tickLine={false}
+                              domain={[90, 100]}
+                            />
+                            <Tooltip
+                              content={<AnalyticsTooltip suffix="%" />}
+                              cursor={<AnalyticsGlowCursor />}
+                            />
+                            <Line
+                              name="Pass Rate"
+                              type="monotone"
+                              dataKey="passRate"
+                              stroke={ANALYTICS_C.pass}
+                              strokeWidth={2}
+                              isAnimationActive
+                              animationBegin={200}
+                              animationDuration={850}
+                              animationEasing="ease-out"
+                              activeDot={{
+                                r: 4,
+                                fill: ANALYTICS_C.pass,
+                                stroke: "#08140F",
+                                strokeWidth: 2,
+                              }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </GlassCard>
+
+                    {/* Line Chart: Cycle Time Process Limit */}
+                    <GlassCard
+                      className="flex h-[320px] flex-col justify-between md:col-span-1 lg:col-span-6"
+                      hoverLift={false}
+                    >
+                      <div className="flex items-center gap-2 border-b border-accent/5 pb-3 text-left">
+                        <Clock className="h-4 w-4 text-accent" />
+                        <span className="font-display text-[10px] font-bold uppercase tracking-widest text-[#9ca3af]">
+                          Cycle Time Process Limit (7 Days)
+                        </span>
+                      </div>
+
+                      <div className="mt-5 h-56 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={trend7Days}
+                            margin={{ left: -10, right: 10, top: 10, bottom: 5 }}
+                          >
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              stroke="rgba(0,229,255,0.02)"
+                            />
+                            <XAxis
+                              dataKey="day"
+                              stroke="#64748b"
+                              fontSize={9}
+                              fontFamily="Orbitron"
+                              tickLine={false}
+                            />
+                            <YAxis
+                              stroke="#64748b"
+                              fontSize={9}
+                              fontFamily="JetBrains Mono"
+                              tickLine={false}
+                            />
+                            <Tooltip
+                              content={<AnalyticsTooltip suffix="s" />}
+                              cursor={<AnalyticsGlowCursor />}
+                            />
+                            <Line
+                              name="Avg Cycle Time"
+                              type="monotone"
+                              dataKey="avgTime"
+                              stroke={ANALYTICS_C.info}
+                              strokeWidth={2}
+                              isAnimationActive
+                              animationBegin={200}
+                              animationDuration={850}
+                              animationEasing="ease-out"
+                              activeDot={{
+                                r: 4,
+                                fill: ANALYTICS_C.info,
+                                stroke: "#08140F",
+                                strokeWidth: 2,
+                              }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </GlassCard>
                   </div>
                 </div>
-              </div>
-
-              {/* Viewport (camera monitor) */}
-              <div className="relative my-3 flex h-[360px] md:h-[400px] xl:h-[440px] w-full items-center justify-center overflow-hidden rounded-xl border border-accent/5 bg-black/95">
-                {/* Grid */}
-                <div
-                  className="absolute inset-0 opacity-20"
-                  style={{
-                    backgroundImage:
-                      "linear-gradient(rgba(50,213,131,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(50,213,131,0.05) 1px, transparent 1px)",
-                    backgroundSize: "30px 30px",
-                  }}
-                />
-
-                {/* Camera HUD - Top left */}
-                <div className="absolute left-3 top-3 z-20 flex items-center gap-3 rounded-lg bg-black/70 border border-accent/10 px-2.5 py-1.5 font-mono text-[9px] backdrop-blur-sm">
-                  <span
-                    className={`flex items-center gap-1.5 ${cameraStatus.connected ? "text-success" : "text-danger"}`}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${cameraBadge.dot}`}
-                    />
-                    INSPECTION CAM
-                  </span>
-                  <span className="text-accent">
-                    {cameraBadge.label.toUpperCase()}
-                  </span>
-                </div>
-
-                {/* Summary view — switches the viewport content */}
-                {summaryView ? (
-                  inspection ? (
-                    <div className="absolute inset-0 z-20 overflow-y-auto rounded-xl bg-black/95 p-4">
-                      <p className="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.25em] text-accent">
-                        Inspection Summary
-                      </p>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                        {[
-                          {
-                            label: "Components",
-                            value: inspection.componentsCount,
-                            color: "text-white",
-                          },
-                          {
-                            label: "Detected",
-                            value: inspection.detections.length,
-                            color: "text-success",
-                          },
-                          {
-                            label: "Missing",
-                            value: presenceFailures,
-                            color: presenceFailures
-                              ? "text-danger"
-                              : "text-success",
-                          },
-                          {
-                            label: "Orient. Err.",
-                            value:
-                              inspection.verificationDetails.orientation.filter(
-                                (o) => o.status === "FAIL",
-                              ).length,
-                            color: "text-success",
-                          },
-                          {
-                            label: "X-MCCV",
-                            value: allChecksPass ? "100%" : "0%",
-                            color: "text-accent",
-                          },
-                          {
-                            label: "Confidence",
-                            value: formatConfidence(inspection.confidence),
-                            color: "text-accent",
-                          },
-                        ].map((s) => (
-                          <div
-                            key={s.label}
-                            className="flex items-center justify-between border-b border-accent/[0.04] py-0.5"
-                          >
-                            <span className="text-[8px] font-mono text-slate-500">
-                              {s.label}
-                            </span>
-                            <span
-                              className={`font-mono text-[9px] font-bold ${s.color || "text-white"}`}
-                            >
-                              {s.value}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-3 flex items-center justify-between border-t border-accent/10 pt-2">
-                        {inspectionTimeline.map((step) => {
-                          const Icon = step.icon;
-                          return (
-                            <div
-                              key={step.step}
-                              className="flex flex-col items-center gap-0.5"
-                            >
-                              <div
-                                className={`flex h-5 w-5 items-center justify-center rounded-full border ${step.done === null ? "border-accent/30 bg-accent/10" : step.done ? "border-success/30 bg-success/10" : "border-slate-700 bg-slate-800"}`}
-                              >
-                                <Icon
-                                  className={`h-2.5 w-2.5 ${step.done === null ? "text-accent" : step.done ? "text-success" : "text-slate-500"}`}
-                                />
-                              </div>
-                              <span className="font-mono text-[6px] text-slate-500">
-                                {step.step}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-black/95">
-                      <span className="font-mono text-[10px] tracking-[0.3em] text-slate-500 uppercase font-bold">
-                        No inspection result to summarize
-                      </span>
-                    </div>
-                  )
-                ) : (
-                  <>
-                    {/* Empty state — ready for inspection */}
-                    {!scanning && !inspection && !uploadedImage && (
-                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2">
-                        <span className="font-mono text-[11px] tracking-[0.3em] text-slate-400 uppercase font-bold">
-                          Ready for inspection
-                        </span>
-                        <span className="font-mono text-[9px] text-slate-600">
-                          Start an inspection to capture and analyze a PCB.
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Uploaded image — image only, no overlay until a real inspection result exists */}
-                    {!scanning && !inspection && uploadedImage && (
-                      <div className="absolute inset-x-0 bottom-10 z-10 flex justify-center">
-                        <span className="rounded-lg border border-accent/10 bg-black/70 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.25em] text-slate-400 backdrop-blur-sm">
-                          Awaiting inspection — press Start Inspection
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Inspection error overlay — reflects the shared inspection store */}
-                    {!scanning && inspectionError && (
-                      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/70 backdrop-blur-sm">
-                        <AlertTriangle className="h-6 w-6 text-danger" />
-                        <span className="font-mono text-[10px] tracking-[0.3em] text-danger uppercase font-bold">
-                          Inspection Error
-                        </span>
-                        <span className="max-w-[60%] text-center font-mono text-[9px] text-slate-400">
-                          Press Start Inspection to retry local image analysis.
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Image container — PCB frame + aligned overlay layers.
-                          Rendered during the scan too so the scan line always
-                          sweeps the visible PCB area. */}
-                    {(uploadedImage || inspection || scanning) && (
-                      <div className="relative z-[5] flex h-full w-full items-center justify-center">
-                        <div
-                          className="relative w-full max-h-full"
-                          style={{ aspectRatio: imageAspect }}
-                        >
-                          {uploadedImage ? (
-                            <img
-                              ref={imageRef}
-                              crossOrigin="anonymous"
-                              src={uploadedImage.url}
-                              alt={`Uploaded PCB: ${uploadedImage.name}`}
-                              onLoad={handleImageLoad}
-                              className="block h-full w-full object-contain"
-                            />
-                          ) : (
-                            <svg
-                              className="block h-full w-full opacity-70"
-                              viewBox="0 0 600 400"
-                              preserveAspectRatio="xMidYMid meet"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
-                            >
-                              <rect
-                                x="30"
-                                y="20"
-                                width="540"
-                                height="360"
-                                rx="12"
-                                stroke="#32d583"
-                                strokeWidth="1.5"
-                                opacity="0.5"
-                              />
-                              <circle
-                                cx="55"
-                                cy="45"
-                                r="6"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.4"
-                              />
-                              <circle
-                                cx="545"
-                                cy="45"
-                                r="6"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.4"
-                              />
-                              <circle
-                                cx="55"
-                                cy="355"
-                                r="6"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.4"
-                              />
-                              <circle
-                                cx="545"
-                                cy="355"
-                                r="6"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.4"
-                              />
-                              <rect
-                                x="220"
-                                y="120"
-                                width="160"
-                                height="160"
-                                rx="4"
-                                stroke="#32d583"
-                                strokeWidth="1.5"
-                                opacity="0.6"
-                              />
-                              <circle
-                                cx="300"
-                                cy="200"
-                                r="35"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.4"
-                              />
-                              <circle
-                                cx="220"
-                                cy="120"
-                                r="3"
-                                fill="#32d583"
-                                opacity="0.6"
-                              />
-                              <path
-                                d="M380 200h80M140 200h-40M300 120V80M300 320v40"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.3"
-                              />
-                              <path
-                                d="M220 160H140M460 240h40"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.3"
-                              />
-                              <rect
-                                x="70"
-                                y="60"
-                                width="35"
-                                height="50"
-                                rx="3"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.5"
-                              />
-                              <rect
-                                x="70"
-                                y="290"
-                                width="35"
-                                height="50"
-                                rx="3"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.5"
-                              />
-                              <rect
-                                x="495"
-                                y="60"
-                                width="35"
-                                height="50"
-                                rx="3"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.5"
-                              />
-                              <rect
-                                x="120"
-                                y="70"
-                                width="20"
-                                height="8"
-                                rx="1"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.4"
-                              />
-                              <rect
-                                x="120"
-                                y="85"
-                                width="20"
-                                height="8"
-                                rx="1"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.4"
-                              />
-                              <rect
-                                x="460"
-                                y="290"
-                                width="20"
-                                height="8"
-                                rx="1"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.4"
-                              />
-                              <rect
-                                x="200"
-                                y="350"
-                                width="200"
-                                height="30"
-                                rx="3"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.5"
-                              />
-                              <line
-                                x1="220"
-                                y1="365"
-                                x2="220"
-                                y2="380"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.3"
-                              />
-                              <line
-                                x1="260"
-                                y1="365"
-                                x2="260"
-                                y2="380"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.3"
-                              />
-                              <line
-                                x1="300"
-                                y1="365"
-                                x2="300"
-                                y2="380"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.3"
-                              />
-                              <line
-                                x1="340"
-                                y1="365"
-                                x2="340"
-                                y2="380"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.3"
-                              />
-                              <line
-                                x1="380"
-                                y1="365"
-                                x2="380"
-                                y2="380"
-                                stroke="#32d583"
-                                strokeWidth="1"
-                                opacity="0.3"
-                              />
-                              <text
-                                x="222"
-                                y="115"
-                                fill="#32d583"
-                                fontSize="7"
-                                fontFamily="monospace"
-                                opacity="0.6"
-                              >
-                                U1
-                              </text>
-                              <text
-                                x="72"
-                                y="55"
-                                fill="#32d583"
-                                fontSize="6"
-                                fontFamily="monospace"
-                                opacity="0.5"
-                              >
-                                C12
-                              </text>
-                              <text
-                                x="72"
-                                y="285"
-                                fill="#32d583"
-                                fontSize="6"
-                                fontFamily="monospace"
-                                opacity="0.5"
-                              >
-                                C13
-                              </text>
-                              <text
-                                x="122"
-                                y="65"
-                                fill="#32d583"
-                                fontSize="5"
-                                fontFamily="monospace"
-                                opacity="0.4"
-                              >
-                                R8
-                              </text>
-                            </svg>
-                          )}
-
-                          {/* Non-PCB result — show the verdict after the
-                                scan finishes, never fake detections */}
-                          {!scanning && isNotPcb ? (
-                            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-lg bg-black/40">
-                              <span className="font-mono text-[11px] tracking-[0.3em] text-danger uppercase font-bold">
-                                Not a PCB
-                              </span>
-                              <span className="max-w-[70%] text-center font-mono text-[9px] text-slate-400">
-                                Uploaded image could not be identified as a
-                                valid PCB.
-                              </span>
-                            </div>
-                          ) : (
-                            <>
-                              {/* Grad-CAM overlay — deferred until the trained ML model
-                                    and XAI pipeline are connected. Only real backend
-                                    heatmap data will ever render here. */}
-
-                              {/* YOLO detection boxes — only when the backend returned real detections */}
-                              <AnimatePresence>
-                                {inspection &&
-                                  !summaryView &&
-                                  inspection.detections?.length > 0 &&
-                                  inspection.detections.map((det, idx) => {
-                                    const boxStyle = getBboxStyle(
-                                      det.bbox,
-                                      imageDims,
-                                    );
-                                    const labelName =
-                                      det.className ||
-                                      det.label ||
-                                      det.class_name ||
-                                      det.id ||
-                                      `Det ${idx + 1}`;
-                                    const confText = formatConfidence(
-                                      det.confidence,
-                                    );
-                                    return (
-                                      <motion.div
-                                        key={det.id || idx}
-                                        initial={{ opacity: 0, scale: 0.8 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        transition={{ duration: 0.4 }}
-                                        className="absolute border-2 border-accent bg-accent/10 rounded cursor-pointer z-10 font-mono text-[9px] text-accent font-bold"
-                                        style={boxStyle}
-                                        onClick={() =>
-                                          handleComponentClick(det)
-                                        }
-                                      >
-                                        <span className="absolute -top-4 left-0 font-mono text-[8px] text-primary-bg font-bold bg-accent px-1 rounded whitespace-nowrap shadow">
-                                          {labelName}{" "}
-                                          {confText !== "—" ? confText : ""}
-                                        </span>
-                                      </motion.div>
-                                    );
-                                  })}
-                              </AnimatePresence>
-                            </>
-                          )}
-
-                          {/* Sequential AOI scan animation — same shared component and state as the
-                                PCB Inspection page. Rendered only while a PCB
-                                image exists AND a scan is actually running. */}
-                          {scanning && pcbImage && (
-                            <ScanningOverlay phase={scanPhase} />
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Bottom HUD — state driven */}
-                    <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between gap-2 rounded-lg bg-black/80 border border-accent/15 px-3 py-1.5 font-mono text-[9px] backdrop-blur-sm">
-                      <div className="flex items-center gap-3">
-                        <span className="text-slate-500">Board:</span>
-                        <span className="font-bold text-white">
-                          {inspection?.pcbId || "—"}
-                        </span>
-                        {(inspection?.inspectionTime != null ||
-                          inspection?.cycleTime != null) && (
-                          <>
-                            <span className="text-slate-600">|</span>
-                            <span className="text-slate-500">
-                              Time:{" "}
-                              <span className="text-white">
-                                {inspection.inspectionTime ??
-                                  inspection.cycleTime}
-                                s
-                              </span>
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {hudStatus ? (
-                          <span
-                            className={`font-bold uppercase tracking-wider ${hudStatus.cls}`}
-                          >
-                            {hudStatus.text}
-                          </span>
-                        ) : (
-                          <StatusBadge status={inspection?.status} />
-                        )}
-                        {inspection?.detections && (
-                          <span className="text-slate-500">
-                            Detections:{" "}
-                            <span className="text-white">
-                              {inspection.detections.length}
-                            </span>
-                          </span>
-                        )}
-                        <span className="text-slate-500">
-                          Conf:{" "}
-                          <span className="text-white">
-                            {inspection?.confidence != null
-                              ? formatConfidence(inspection.confidence)
-                              : "—"}
-                          </span>
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </GlassCard>
-
-            {/* ---- COMPONENT DETAIL DRAWER ---- */}
-            <AnimatePresence>
-              {selectedComponent && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                  className="overflow-hidden"
-                >
-                  <GlassCard hoverLift={false}>
-                    <div className="flex items-center justify-between border-b border-accent/5 pb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success/15 text-[9px] font-bold text-success">
-                          {selectedComponent.name.charAt(0)}
-                        </span>
-                        <span className="font-display text-[10px] font-bold uppercase tracking-widest text-white">
-                          {selectedComponent.name}
-                        </span>
-                        {selectedComponent.status && (
-                          <StatusBadge status={selectedComponent.status} />
-                        )}
-                      </div>
-                      <button
-                        onClick={() => setSelectedComponent(null)}
-                        className="text-slate-500 hover:text-white transition-colors"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    {selectedComponent.confidence !== undefined &&
-                    selectedComponent.reason !== undefined ? (
-                      <div className="mt-3 grid grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between font-mono text-[10px]">
-                            <span className="text-slate-500">Confidence</span>
-                            <span className="text-accent font-bold">
-                              {selectedComponent.confidence}%
-                            </span>
-                          </div>
-                          <div className="flex justify-between font-mono text-[10px]">
-                            <span className="text-slate-500">Reason</span>
-                            <span className="text-slate-300 text-right max-w-[140px]">
-                              {selectedComponent.reason}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="rounded-lg border border-accent/5 bg-[#050816]/40 p-2.5">
-                          <p className="text-[8px] font-mono text-slate-500 mb-1.5">
-                            X-MCCV Verification
-                          </p>
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                            {[
-                              {
-                                label: "Presence",
-                                pass: selectedComponent.presence,
-                              },
-                              {
-                                label: "Position",
-                                pass: selectedComponent.position,
-                              },
-                              {
-                                label: "Orientation",
-                                pass: selectedComponent.orientation,
-                              },
-                              { label: "Count", pass: selectedComponent.count },
-                            ].map((v) => (
-                              <div
-                                key={v.label}
-                                className="flex items-center gap-1.5 font-mono text-[9px]"
-                              >
-                                <span
-                                  className={`h-1.5 w-1.5 rounded-full ${v.pass ? "bg-success" : "bg-danger"}`}
-                                />
-                                <span className="text-slate-400">
-                                  {v.label}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-3 font-mono text-[10px] text-slate-500">
-                        No verification details available for this component.
-                      </div>
-                    )}
-                  </GlassCard>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-
-          {/* ---- RIGHT COLUMN: X-MCCV VERIFICATION ---- */}
-          <motion.div variants={itemVariants}>
-            <XMCCVResultsPanel inspection={inspection} />
-          </motion.div>
-        </div>
-
-        {/* ---- FULL-WIDTH RESULTS ROW (4 Cards Side by Side) ---- */}
-        <motion.div variants={itemVariants} className="space-y-3 mt-6">
-          <div className="flex items-center justify-between border-b border-accent/5 pb-2">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-accent" />
-              <span className="font-display text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Inspection Verification & Detailed Findings
-              </span>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5 items-stretch [grid-template-columns:repeat(1,minmax(0,1fr))] lg:[grid-template-columns:repeat(2,minmax(0,1fr))]">
-            {/* 1. Heatmap Visualization */}
-            <HeatmapPanel
-              inspection={inspection}
-              className="min-h-[480px] h-[500px] lg:h-[520px]"
-            />
-
-            {/* 2. XAI Explanation */}
-            <XAIExplanationPanel
-              inspection={inspection}
-              xai={inspection?.xai}
-              isPass={inspection?.status === "PASS"}
-              isNotPcb={
-                inspection?.isPcb === false ||
-                String(inspection?.status || "").toUpperCase() === "NOT_PCB"
-              }
-              isMlPending={inspection?.modelName === "Pending"}
-              isInspected={inspection?.status === "INSPECTED"}
-              xaiVisualUrl={
-                inspection?.xai?.overlay_path ||
-                inspection?.xai?.heatmap_path ||
-                inspection?.xai?.visualization ||
-                null
-              }
-              className="min-h-[480px] h-[500px] lg:h-[520px]"
-            />
-
-            {/* 3. OCR Results */}
-            <ODCResultsPanel
-              inspection={inspection}
-              className="min-h-[480px] h-[500px] lg:h-[520px]"
-            />
-
-            {/* 4. Final Inspection Decision */}
-            <InspectionDecisionPanel
-              inspection={inspection}
-              onGenerateReport={handleGenerateReport}
-              onExport={handleExportCsv}
-              generating={generating}
-              exporting={exporting}
-              className="min-h-[480px] h-[500px] lg:h-[520px]"
-            />
-          </div>
+              );
+            })()
+          )}
         </motion.div>
       </motion.main>
+
+      {/* ── Defect Detail Floating Panel (when bar clicked in Anomalies Categories) ── */}
+      <AnimatePresence>
+        {selectedDefectInfo && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              onClick={() => setSelectedDefect(null)}
+              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+            />
+            <motion.aside
+              initial={{ opacity: 0, x: 48 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 48 }}
+              transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+              className="fixed right-5 top-20 z-50 w-[320px] rounded-2xl border border-accent/15 bg-[#08140F]/95 p-5 shadow-[0_0_40px_rgba(31,227,138,0.1)] backdrop-blur-xl"
+            >
+              <div className="flex items-center justify-between border-b border-accent/10 pb-3">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`h-2 w-2 rounded-full ${severityStyles[selectedDefectInfo.severity].split(" ")[0]}`}
+                    style={{
+                      background:
+                        selectedDefectInfo.severity === "Critical"
+                          ? ANALYTICS_C.crit
+                          : selectedDefectInfo.severity === "High"
+                            ? ANALYTICS_C.warn
+                            : ANALYTICS_C.info,
+                    }}
+                  />
+                  <span className="font-display text-xs font-bold uppercase tracking-widest text-white">
+                    {selectedDefectInfo.name}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSelectedDefect(null)}
+                  className="text-slate-500 transition-colors hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-accent/10 bg-[#0d1b17]/60 px-3 py-2.5 text-center">
+                  <p className="font-mono text-[8px] uppercase tracking-widest text-slate-500">
+                    Today's Count
+                  </p>
+                  <p className="font-mono text-lg font-bold text-warning">
+                    {selectedDefectInfo.count}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-accent/10 bg-[#0d1b17]/60 px-3 py-2.5 text-center">
+                  <p className="font-mono text-[8px] uppercase tracking-widest text-slate-500">
+                    Weekly Count
+                  </p>
+                  <p className="font-mono text-lg font-bold text-white">
+                    {selectedDefectInfo.weekly}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <p className="mb-1.5 font-mono text-[8px] uppercase tracking-widest text-slate-500">
+                  Affected Boards
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedDefectInfo.boards.map((b) => (
+                    <span
+                      key={b}
+                      className="rounded-md border border-accent/15 bg-accent/5 px-2 py-1 font-mono text-[9px] font-semibold text-accent"
+                    >
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2">
+                <p className="font-mono text-[8px] uppercase tracking-widest text-slate-500">
+                  Severity
+                </p>
+                <span
+                  className={`rounded-full border px-2.5 py-0.5 font-mono text-[9px] font-bold ${severityStyles[selectedDefectInfo.severity]}`}
+                >
+                  {selectedDefectInfo.severity}
+                </span>
+              </div>
+
+              <div className="mt-3 rounded-lg border border-accent/10 bg-[#0d1b17]/60 px-3 py-2.5">
+                <p className="mb-1 font-mono text-[8px] uppercase tracking-widest text-slate-500">
+                  Suggested Action
+                </p>
+                <p className="text-[10px] leading-relaxed text-slate-300">
+                  {selectedDefectInfo.action}
+                </p>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* User Profile Modal */}
       {showProfile && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-accent/10 bg-card-bg p-6 shadow-2xl">
@@ -2137,13 +1754,12 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Create New Template Modal (Preserved exactly) */}
       <Modal
         isOpen={showCreateTemplateModal}
         onClose={() => {
           if (anyActionInProgress) return;
-
-          // Cancel an active, incomplete session before discarding it so the
-          // Raspberry Pi capture session is not silently abandoned.
           if (sessionId && capturedCount < templateImageCount) {
             handleCancelTemplateSession();
             return;
@@ -2199,7 +1815,6 @@ export default function DashboardPage() {
               value={templateImageCount}
               onChange={(e) => {
                 const val = parseInt(e.target.value, 10);
-
                 if (!isNaN(val) && val >= 4 && val <= 5) {
                   setTemplateImageCount(val);
                 }
@@ -2222,12 +1837,10 @@ export default function DashboardPage() {
           <div className="rounded-lg border border-accent/10 bg-accent/[0.03] px-4 py-3">
             <div className="flex items-start gap-3">
               <Camera className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-
               <div>
                 <p className="text-xs font-semibold text-slate-300">
                   Raspberry Pi Camera
                 </p>
-
                 <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
                   Press Start Capture to open a session, then press Capture
                   Image once per reference photo. Reposition the PCB between
@@ -2277,13 +1890,10 @@ export default function DashboardPage() {
 
           {/* ACTIONS */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-accent/10">
-            {/* CANCEL */}
             <button
               onClick={() => {
                 if (anyActionInProgress) return;
-
                 if (sessionId && capturedCount < templateImageCount) {
-                  // Cancel an active, incomplete session on the Pi first.
                   handleCancelTemplateSession().then(() => {
                     setShowCreateTemplateModal(false);
                     setTemplateName("");
@@ -2310,7 +1920,7 @@ export default function DashboardPage() {
                   : "Close"}
             </button>
 
-            {/* START CAPTURE — shown only before a session is open */}
+            {/* START CAPTURE */}
             {!sessionId && (
               <button
                 onClick={handleStartCapture}
@@ -2331,8 +1941,7 @@ export default function DashboardPage() {
               </button>
             )}
 
-            {/* CAPTURE IMAGE — shown only while a session is open and not yet
-                complete. Each press captures exactly one image. */}
+            {/* CAPTURE IMAGE */}
             {sessionId && capturedCount < templateImageCount && (
               <button
                 onClick={handleCaptureImage}
@@ -2353,7 +1962,7 @@ export default function DashboardPage() {
               </button>
             )}
 
-            {/* FINISH TEMPLATE — shown only when all images captured */}
+            {/* FINISH TEMPLATE */}
             {sessionId && capturedCount >= templateImageCount && (
               <button
                 onClick={handleFinishTemplate}
